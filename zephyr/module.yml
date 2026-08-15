@@ -1,0 +1,12 @@
+name: torabo-tsuki_ext_FW
+build:
+  cmake: .
+  kconfig: Kconfig
+  settings:
+    # All devicetree bindings (behaviors + input processors) live under
+    # <module>/dts/bindings; the input dtsi under <module>/dts/input.
+    dts_root: .
+    # Distributable snippets live under <module>/snippets. Adding a snippet to
+    # the build (-S <name>) is how a user turns a feature on without editing
+    # the (pristine, upstream-forked) keyboard body.
+    snippet_root: .

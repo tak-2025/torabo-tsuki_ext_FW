@@ -1,0 +1,4 @@
+name: torabo-trackpad-live-ext
+append:
+  EXTRA_DTC_OVERLAY_FILE: torabo-trackpad-live-ext.overlay
+  EXTRA_CONF_FILE: torabo-trackpad-live-ext.conf

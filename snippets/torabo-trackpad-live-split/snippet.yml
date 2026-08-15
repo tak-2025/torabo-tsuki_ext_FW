@@ -1,0 +1,4 @@
+name: torabo-trackpad-live-split
+append:
+  EXTRA_DTC_OVERLAY_FILE: torabo-trackpad-live-split.overlay
+  EXTRA_CONF_FILE: torabo-trackpad-live-split.conf

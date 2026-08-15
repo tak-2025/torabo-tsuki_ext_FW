@@ -1,0 +1,83 @@
+/*
+ * Second trackpad on the RIGHT (central) board, connected through the
+ * bmp-boost-led-extender FPC.
+ *
+ * The extender breaks out a separate set of GPIOs, so this pad lives on its
+ * own I2C instance (i2c1 / TWIM1) to avoid clashing with the right-side
+ * trackball, which uses spi0 (SPIM0 == TWIM0 on nRF52840).
+ *
+ * extender FPC -> nRF GPIO, per the OFFICIAL BMP Boost Extender Mini trackpad
+ * example (authoritative for the official IQS7211E mini pad):
+ *   SDA=P0.17  SCL=P0.21  RDY(irq)=P0.31  POW=P0.24
+ * (The 00ref/v2 DIY pad has a different FPC pinout — do NOT derive the official
+ *  pad's RDY from it; the official example puts RDY on P0.31.)
+ */
+
+#include <input/processors.dtsi>
+#include <dt-bindings/zmk/input_transform.h>
+
+&pinctrl {
+    i2c1_default: i2c1_default {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SDA, 0, 17)>,
+                    <NRF_PSEL(TWIM_SCL, 0, 21)>;
+            bias-pull-up;
+        };
+    };
+
+    i2c1_sleep: i2c1_sleep {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SDA, 0, 17)>,
+                    <NRF_PSEL(TWIM_SCL, 0, 21)>;
+            bias-pull-up;
+            low-power-enable;
+        };
+    };
+};
+
+&i2c1 {
+    status = "okay";
+    compatible = "nordic,nrf-twim";
+    pinctrl-0 = <&i2c1_default>;
+    pinctrl-1 = <&i2c1_sleep>;
+    pinctrl-names = "default", "sleep";
+    clock-frequency = <I2C_BITRATE_FAST>;
+    zephyr,concat-buf-size = <32>;
+
+    pointing_device_ext: pointing_device_ext@56 {
+        status = "okay";
+        compatible = "azoteq,iqs7211e";
+        reg = <0x56>;
+        irq-gpios = <&gpio0 31 (GPIO_PULL_UP)>;
+        power-gpios = <&gpio0 24 (GPIO_ACTIVE_HIGH | NRF_GPIO_DRIVE_H1)>;
+        /*
+         * The pad on the extender is a MINI trackpad (user-confirmed 2026-07-09),
+         * so it needs the mini electrode config. The driver's built-in
+         * iqs7211e_init_default is tuned for the CIRCULAR low-power pad and would
+         * mis-initialise a mini. (The official extender example omits init-symbol
+         * only because it assumes the circular module.)
+         */
+        init-symbol = "mini_trackpad_iqs7211e_init";
+        init-length = <217>;
+    };
+};
+
+/ {
+    pointing_listener_ext: pointing_listener_ext {
+        compatible = "zmk,input-listener";
+        device = <&pointing_device_ext>;
+        status = "okay";
+        scroll_vertical {
+            layers = <3>;
+            input-processors = <&zip_xy_transform (INPUT_TRANSFORM_X_INVERT)>, <&zip_xy_scaler 1 8>, <&zip_x_scaler 0 1>, <&zip_xy_to_scroll_mapper>;
+        };
+        scroll_horizontal {
+            layers = <2>;
+            input-processors = <&zip_xy_transform (INPUT_TRANSFORM_X_INVERT)>, <&zip_xy_scaler 1 8>, <&zip_y_scaler 0 1>, <&zip_xy_to_scroll_mapper>;
+        };
+        mouse_mode {
+            layers = <0 1>;
+            input-processors = <&zip_xy_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>, <&zip_temp_layer 1 500>;
+        };
+    };
+};

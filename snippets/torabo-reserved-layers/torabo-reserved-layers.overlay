@@ -1,0 +1,69 @@
+/*
+ * torabo-reserved-layers snippet — append N empty status="reserved" layers to
+ * /keymap so ZMK Studio can claim them at runtime (add_layer) WITHOUT a reflash.
+ *
+ * N は build.yaml の cmake-args で渡す（既定 10）。**Kconfig では渡せない**:
+ * Zephyr は devicetree を Kconfig より先に処理し、DTS の前処理に autoconf.h を
+ * 渡さないので、overlay の中では CONFIG_* が常に未定義（=0）になる。かつては
+ * #if CONFIG_TORABO_RESERVED_LAYERS >= N と書いていたため、conf に幾つ書いても
+ * 予約レイヤーが1枚も生成されず、Studio の LAYER「+」が無効のままだった。
+ *
+ *     - board: bmp_boost
+ *       shield: torabo_tsuki_lp_right
+ *       snippet: "... torabo-reserved-layers"
+ *       cmake-args: -DDTS_EXTRA_CPPFLAGS="-DTORABO_RESERVED_LAYERS=6"
+ *
+ * cmake-args を書き忘れても既定 10 枚で動く（0枚で黙って壊れるより安全）。
+ * なお CONFIG_TORABO_RESERVED_LAYERS は torabo-caps がアプリへ枚数を申告する
+ * ためだけに残っている。DT の枚数はこのマクロが決める。
+ *
+ * Assumes the torabo-tsuki 66-key layout (rows 12/12/14/14/14). The added layers
+ * come after the keymap's own layers, so their indices follow the real layers.
+ *
+ * Do NOT also declare reserved layers in your keymap.keymap when using this
+ * (the counts would stack).
+ */
+
+#ifndef TORABO_RESERVED_LAYERS
+#define TORABO_RESERVED_LAYERS 10
+#endif
+
+#define TORABO_RL_TRANS \
+	&trans &trans &trans &trans &trans &trans   &trans &trans &trans &trans &trans &trans \
+	&trans &trans &trans &trans &trans &trans   &trans &trans &trans &trans &trans &trans \
+	&trans &trans &trans &trans &trans &trans &trans   &trans &trans &trans &trans &trans &trans &trans \
+	&trans &trans &trans &trans &trans &trans &trans   &trans &trans &trans &trans &trans &trans &trans \
+	&trans &trans &trans &trans &trans &trans &trans   &trans &trans &trans &trans &trans &trans &trans
+
+&{/keymap} {
+#if TORABO_RESERVED_LAYERS >= 1
+	torabo_rl_1 { status = "reserved"; bindings = <TORABO_RL_TRANS>; };
+#endif
+#if TORABO_RESERVED_LAYERS >= 2
+	torabo_rl_2 { status = "reserved"; bindings = <TORABO_RL_TRANS>; };
+#endif
+#if TORABO_RESERVED_LAYERS >= 3
+	torabo_rl_3 { status = "reserved"; bindings = <TORABO_RL_TRANS>; };
+#endif
+#if TORABO_RESERVED_LAYERS >= 4
+	torabo_rl_4 { status = "reserved"; bindings = <TORABO_RL_TRANS>; };
+#endif
+#if TORABO_RESERVED_LAYERS >= 5
+	torabo_rl_5 { status = "reserved"; bindings = <TORABO_RL_TRANS>; };
+#endif
+#if TORABO_RESERVED_LAYERS >= 6
+	torabo_rl_6 { status = "reserved"; bindings = <TORABO_RL_TRANS>; };
+#endif
+#if TORABO_RESERVED_LAYERS >= 7
+	torabo_rl_7 { status = "reserved"; bindings = <TORABO_RL_TRANS>; };
+#endif
+#if TORABO_RESERVED_LAYERS >= 8
+	torabo_rl_8 { status = "reserved"; bindings = <TORABO_RL_TRANS>; };
+#endif
+#if TORABO_RESERVED_LAYERS >= 9
+	torabo_rl_9 { status = "reserved"; bindings = <TORABO_RL_TRANS>; };
+#endif
+#if TORABO_RESERVED_LAYERS >= 10
+	torabo_rl_10 { status = "reserved"; bindings = <TORABO_RL_TRANS>; };
+#endif
+};

@@ -1,0 +1,40 @@
+#include <dt-bindings/zmk/keys.h>
+
+/*
+ * 拡張FPC(extender)のロータリーエンコーダ（EC11・A/B相のみ。ボタンは encoder-button）。
+ * 「物理的にエンコーダが載っている側」のビルドに適用する。
+ *   central 側に載る場合  : これ単体でローカル動作。
+ *   peripheral 側に載る場合: 相手(central)に input-encoder-ext-recv を併用（分割センサー中継）。
+ *
+ * ピン: A=P0.17 / B=P0.21（拡張FFC。拡張パッドと排他＝同じピンを使う）。
+ * 機械式なので拡張の電源レール P0.24 は使わない。
+ *
+ * ⚠ 制約: エンコーダは「キーボード全体で1個」まで。ZMK の keymap-sensors はグローバルな
+ *    sensor_index で割当を引くため、複数エンコーダには全エンコーダを固定順で並べた単一の
+ *    sensors 宣言が必要になる。現状は各スニペットが LEN=1 の sensors を張るので、2個以上は
+ *    index が衝突する。ビルダーが2個以上を弾く。
+ */
+
+/ {
+    ext_encoder: encoder_ext {
+        compatible = "alps,ec11";
+        a-gpios = <&gpio0 17 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        b-gpios = <&gpio0 21 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        steps = <80>;
+        status = "okay";
+    };
+
+    sensors: sensors {
+        compatible = "zmk,keymap-sensors";
+        sensors = <&ext_encoder>;
+        triggers-per-rotation = <20>;
+        status = "okay";
+    };
+};
+
+/* 静的な既定割当: 回転で音量 ±（cascade するので layer_0 のみで全レイヤー既定）。 */
+/* Path reference, not &layer_0: the keymap declares the layer as a node NAME,
+ * not a label, so there is nothing for &layer_0 to resolve to. */
+&{/keymap/layer_0} {
+    sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
+};

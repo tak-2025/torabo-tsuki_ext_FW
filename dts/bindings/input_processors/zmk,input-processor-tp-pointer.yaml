@@ -1,0 +1,33 @@
+# Copyright (c) 2026 tak-2025
+# SPDX-License-Identifier: MIT
+
+description: |
+  Device-aware configurable trackpad processor (torabo-tsuki, v2). Wired as the
+  input listener BASE processor; for the device named by `device-id` it reads the
+  runtime per-layer per-axis role/direction/step from the trackpad store and
+  always fails open to plain move.
+    continuous roles (move/scroll/off) pass through (scroll remaps to WHEEL);
+    the ENCODER role accumulates the axis and fires the per-axis pos/neg binding
+    (from the store) every `step` units, consuming the axis. The bindings are
+    built at runtime from `behaviors` (see below), so any keycode is assignable.
+
+compatible: "zmk,input-processor-tp-pointer"
+
+include: ip_zero_param.yaml
+
+properties:
+  device-id:
+    type: int
+    required: true
+    description: which trackpad store device this instance drives (0=left, 1=right ext).
+  behaviors:
+    type: phandle-array
+    # ZMK behaviors expose #binding-cells, not #behavior-cells. Without this,
+    # the property name `behaviors` makes devicetree look for #behavior-cells and
+    # every ref (starting with &none) fails "lacks #behavior-cells".
+    specifier-space: binding
+    required: true
+    description: |
+      Runtime binding-synthesis references, in this fixed order (binding.h):
+      <&none>, <&kp 0>, <&mo 0>, <&to 0>, <&tog 0>. &kp doubles for both the KP
+      and CP behaviors (a consumer usage is &kp with the consumer usage page).

@@ -1,0 +1,32 @@
+# Copyright (c) 2026 tak-2025
+# SPDX-License-Identifier: MIT
+
+description: |
+  Gesture-remap input processor (torabo-tsuki, v2). Sibling of tp-pointer, wired
+  as a listener BASE processor on the same pointing listener. Consumes INPUT_EV_KEY
+  (BTN_0 single tap, BTN_1 two-finger tap) and, for the device named by `device-id`
+  and the active layer, fires the store's gesture binding (tap / tap2 / hold), with
+  optional double-tap detection in a time window (§4.4). Fails open: an unset slot
+  passes the driver's default click through (CONTINUE). Bindings are built at
+  runtime from `behaviors` (same references and order as tp-pointer).
+
+compatible: "zmk,input-processor-tp-keys"
+
+include: ip_zero_param.yaml
+
+properties:
+  device-id:
+    type: int
+    required: true
+    description: which trackpad store device this instance drives (0=left, 1=right ext).
+  behaviors:
+    type: phandle-array
+    # ZMK behaviors expose #binding-cells, not #behavior-cells. Without this,
+    # the property name `behaviors` makes devicetree look for #behavior-cells and
+    # every ref (starting with &none) fails "lacks #behavior-cells".
+    specifier-space: binding
+    required: true
+    description: |
+      Runtime binding-synthesis references, in this fixed order (binding.h):
+      <&none>, <&kp 0>, <&mo 0>, <&to 0>, <&tog 0>. &kp doubles for both the KP
+      and CP behaviors (a consumer usage is &kp with the consumer usage page).

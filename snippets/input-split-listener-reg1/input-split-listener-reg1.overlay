@@ -1,0 +1,39 @@
+#include <input/processors.dtsi>
+#include <dt-bindings/zmk/input_transform.h>
+
+/*
+ * central 受け口（**reg=1**）— `input-split-listener`（reg=0）の双子。
+ * peripheral 側に pointing デバイスが2個ある構成で、2個目（拡張FFCのパッド）を受ける。
+ * 併用: peripheral 側は `input-split`(reg=0) ＋ `input-trackpad-ext-split-reg1`(reg=1)。
+ * この overlay は reg=0 版と併用する前提（reg=0 版が1個目を受ける）。
+ */
+
+/{
+    split_inputs {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        pointing_device_split_1: pointing_device_split@1 {
+            compatible = "zmk,input-split";
+            reg = <1>;
+        };
+    };
+
+    pointing_device_split_listener_1: pointing_device_split_listener_1 {
+        compatible = "zmk,input-listener";
+        device = <&pointing_device_split_1>;
+        status = "okay";
+        scroll_vertical {
+            layers = <3>;
+            input-processors = <&zip_xy_transform (INPUT_TRANSFORM_X_INVERT)>, <&zip_xy_scaler 1 8>, <&zip_x_scaler 0 1>, <&zip_xy_to_scroll_mapper>;
+        };
+        scroll_horizontal {
+            layers = <2>;
+            input-processors = <&zip_xy_transform (INPUT_TRANSFORM_X_INVERT)>, <&zip_xy_scaler 1 8>, <&zip_y_scaler 0 1>, <&zip_xy_to_scroll_mapper>;
+        };
+        mouse_mode {
+            layers = <0 1>;
+            input-processors = <&zip_xy_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>, <&zip_temp_layer 1 500>;
+        };
+    };
+};

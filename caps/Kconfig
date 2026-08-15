@@ -1,0 +1,41 @@
+menuconfig TORABO_CAPS
+    bool "Torabo capability descriptor (firmware self-description)"
+    default n
+    help
+      Expose "what can this firmware do?" to Torabo-Studio: the firmware version,
+      which feature modules were compiled in, each one's wire version, and
+      per-feature capability bits.
+
+      A build is assembled from snippets, so two keyboards running the same app can
+      have completely different feature sets. Rather than have the app guess (or
+      probe every GATT service and see which ones fail), the firmware names itself
+      once on connect and the app shows only the tabs that exist.
+
+      Enable on the CENTRAL — it is the half the app talks to.
+
+if TORABO_CAPS
+
+config TORABO_CAPS_BLE
+    bool "Expose the descriptor over a BLE GATT service"
+    depends on BT
+    default y
+    help
+      Read-only GATT service e1f4a000. Nothing to write: it describes the build.
+
+config TORABO_FW_VERSION_MAJOR
+    int "Torabo firmware version: major"
+    default 0
+
+config TORABO_FW_VERSION_MINOR
+    int "Torabo firmware version: minor"
+    default 1
+
+config TORABO_FW_VERSION_PATCH
+    int "Torabo firmware version: patch"
+    default 0
+
+module = TORABO_CAPS
+module-str = Torabo Caps
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # TORABO_CAPS

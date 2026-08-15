@@ -1,0 +1,21 @@
+description: |
+  Peripheral-side LED receiver (torabo-tsuki).
+
+  The central invokes this behavior over the split with the rendered LED state
+  packed into param1 (colour mask | pattern << 8). The peripheral holds no rule
+  table of its own — it just renders what it is told, plus a local fallback while
+  the link is down (which is the one state the central cannot reach it in).
+
+  KEEP THE NODE NAME SHORT: the split payload carries the behavior's device name
+  in a char[16], and a longer name is silently truncated and then fails to resolve
+  on this side. `led_ext` is 7 characters.
+
+compatible: "torabo,behavior-led-ext"
+
+properties:
+  "#binding-cells":
+    type: int
+    required: true
+    const: 0
+
+binding-cells: []

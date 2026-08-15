@@ -1,0 +1,39 @@
+/*
+ * torabo-encoder-btn-local — encoder push button on the CENTRAL half.
+ *
+ * Same idea as torabo-encoder-btn-split + -recv, minus the split hop: the button
+ * already sits on the half that talks to the host, so gpio-keys feeds a local
+ * listener and the enc-button processor fires straight from the store.
+ *
+ * Pin: standard FFC button = P0.20 (use torabo-encoder-btn-local-ext for P0.31).
+ * Pair with torabo-encoder-live, which brings the store, the GATT window and the
+ * rotation router.
+ */
+
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/ {
+    enc_btn_keys: enc_btn_keys {
+        compatible = "gpio-keys";
+
+        enc_btn: enc_btn {
+            /* active low + pull-up: the switch shorts to GND when pressed */
+            gpios = <&gpio0 20 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            zephyr,code = <INPUT_BTN_0>;
+        };
+    };
+
+    enc_button: enc_button {
+        compatible = "torabo,input-processor-enc-button";
+        #input-processor-cells = <0>;
+        code = <0x100>; /* INPUT_BTN_0 — must match zephyr,code above */
+        behaviors = <&none>, <&kp 0>, <&mo 0>, <&to 0>, <&tog 0>;
+    };
+
+    enc_btn_listener: enc_btn_listener {
+        compatible = "zmk,input-listener";
+        device = <&enc_btn_keys>;
+        status = "okay";
+        input-processors = <&enc_button>;
+    };
+};

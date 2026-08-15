@@ -1,0 +1,61 @@
+menuconfig ZMK_LIVE_FEED
+    bool "Live key/layer feed over BLE NOTIFY (Torabo-Float)"
+    depends on BT && (!ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL)
+    default n
+    help
+      Push a small packed event on every key press/release and layer change over a
+      dedicated NOTIFY GATT service (e1f4af00), so a desktop overlay (Torabo-Float)
+      can show which key is being pressed and which layer is active in real time.
+
+      CENTRAL-only: only the central knows the layer state and the global key
+      position. The push is fire-and-forget and only fires while a client has
+      subscribed the CCC, so an unused build pays nothing. See Torabo-Float/PLAN.md.
+
+      Default n; enable per build target with the torabo-live-feed snippet.
+
+if ZMK_LIVE_FEED
+
+config ZMK_LIVE_FEED_PREF_LATENCY
+    int "Preferred peripheral latency while a client is subscribed"
+    default 10
+    help
+      Connection latency requested when a client subscribes the feed. The default
+      peripheral latency batches notifications into a laggy burst; a lower value is
+      requested on subscribe and restored on unsubscribe (mirrors the Studio RPC
+      transport). Only requested when this is below CONFIG_BT_PERIPHERAL_PREF_LATENCY.
+
+config ZMK_LIVE_FEED_THREAD_STACK_SIZE
+    int "Live feed notify thread stack size"
+    default 1024
+    help
+      Stack for the dedicated live_feed work queue thread. This thread owns the
+      bt_gatt_notify() call, which blocks (K_FOREVER) when the ACL TX buffers are
+      exhausted, and also runs compute_keymap_crc(). Sized like ZMK's own BLE
+      notify thread (CONFIG_ZMK_BLE_THREAD_STACK_SIZE, the HOG send queue) with a
+      little extra headroom for the CRC walk.
+
+config ZMK_LIVE_FEED_THREAD_PRIORITY
+    int "Live feed notify thread priority"
+    default 10
+    help
+      Priority of the dedicated live_feed work queue thread. A preemptible, low
+      priority (matching ZMK's low-priority work queue used by RGB/battery) keeps
+      this best-effort overlay feature from ever preempting key scanning, HID, or
+      split traffic; when its bt_gatt_notify() blocks it only pends itself.
+
+config ZMK_LIVE_FEED_DIAG_HEARTBEAT_MS
+    int "Diagnostic heartbeat interval (ms)"
+    default 750
+    help
+      Diagnostic mode (per-device liveness on the second characteristic e1f4af02,
+      PLAN-torabo-float.md §13) ships with the live feed. On-change records are cheap
+      and always sent; a periodic heartbeat runs only while a client opts in (writes
+      1 to e1f4af02), re-sending every device's record this often so the app can show
+      "N ms ago" freshness and pick up the encoder counters (which have no input-event
+      hook). Only runs while a client has it enabled, so a normal user pays nothing.
+
+module = ZMK_LIVE_FEED
+module-str = ZMK Live Feed
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # ZMK_LIVE_FEED

@@ -1,0 +1,32 @@
+description: |
+  Rotary encoder push-button router (torabo-tsuki).
+
+  Picks up the INPUT_EV_KEY event a `gpio-keys` button emits and fires whatever the
+  runtime encoder store assigns to the current layer's button, so the click is
+  editable live from the app.
+
+  Sits on the input listener for the button device. When the encoder is on the
+  peripheral half, put the gpio-keys device behind `zmk,input-split` and place this
+  processor on the central's listener — behaviors must be invoked on the half that
+  talks to the host.
+
+compatible: "torabo,input-processor-enc-button"
+
+include: ip_zero_param.yaml
+
+properties:
+  code:
+    type: int
+    required: true
+    description: |
+      The INPUT_EV_KEY code the gpio-keys node emits for this button (its
+      `zephyr,code`, e.g. INPUT_BTN_0). Events with any other code pass through.
+  behaviors:
+    type: phandle-array
+    # See the behavior binding: `behaviors` needs the binding specifier space or
+    # devicetree demands #behavior-cells and every reference fails.
+    specifier-space: binding
+    required: true
+    description: |
+      Runtime binding-synthesis references, in this fixed order (binding.h):
+      <&none>, <&kp 0>, <&mo 0>, <&to 0>, <&tog 0>.

@@ -1,0 +1,18 @@
+/*
+ * torabo-macros snippet — provides the `&dmac` dynamic-macro behavior node so
+ * the user only writes `&dmac 0` .. `&dmac 19` in their keymap, without having
+ * to declare the behavior node themselves. Keeps the upstream body unmodified.
+ *
+ * NOTE: if your keymap already declares its own `dmac:` behavior node, do NOT
+ * also add this snippet — the duplicate label would be a devicetree error.
+ */
+
+/ {
+    behaviors {
+        dmac: dynamic_macro {
+            compatible = "zmk,behavior-dynamic-macro";
+            #binding-cells = <1>;
+            display-name = "Dynamic Macro";
+        };
+    };
+};

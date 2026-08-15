@@ -1,0 +1,4 @@
+name: input-trackpad-ext
+append:
+  EXTRA_DTC_OVERLAY_FILE: input-trackpad-ext.overlay
+  EXTRA_CONF_FILE: input-trackpad-ext.conf

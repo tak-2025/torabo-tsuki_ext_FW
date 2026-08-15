@@ -1,0 +1,23 @@
+# Torabo ZMK features (companion firmware module for Torabo-Studio).
+#
+# Independent features, each opt-in via its own CONFIG so a build target enables
+# only what it needs:
+#
+#   CONFIG_ZMK_DYNAMIC_KEYMAP=y      -> custom macros (&dmac, live BLE edit)
+#   CONFIG_ZMK_DYNAMIC_COMBOS=y      -> live-editable combos (NVS-backed engine)
+#   CONFIG_ZMK_TRACKBALL_CONFIG=y    -> trackball settings + auto mouse (temp) layer
+#   CONFIG_TORABO_RESERVED_LAYERS=N  -> inject N reserved layers (with the
+#                                       torabo-reserved-layers snippet)
+#
+# All default off; the parent ZMK config turns on what it wants per shield.
+
+rsource "macros/Kconfig"
+rsource "combos/Kconfig"
+rsource "trackball/Kconfig"
+rsource "trackpad/Kconfig"
+rsource "layers/Kconfig"
+rsource "encoder/Kconfig"
+rsource "caps/Kconfig"
+rsource "led/Kconfig"
+rsource "status_led_ext/Kconfig"
+rsource "live_feed/Kconfig"

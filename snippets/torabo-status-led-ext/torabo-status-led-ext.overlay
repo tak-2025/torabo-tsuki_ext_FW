@@ -1,0 +1,34 @@
+/*
+ * torabo-status-led-ext snippet — the 3-colour LED on the bmp-boost LED
+ * extender (right/central half). Cathode-driven common-anode array whose anode
+ * rides the trackpad-ext POW rail (P0.24), so use this together with the
+ * input-trackpad-ext snippet, which powers that rail.
+ *
+ *   red          = P1.11  (&gpio1 11)
+ *   yellow-green = P1.10  (&gpio1 10)
+ *   "green"      = P1.02  (&gpio1 2)   (datasheet labels this element Y/yellow;
+ *                                       swap with yellow-green here if the tint
+ *                                       looks off on the actual board)
+ *
+ * GPIO_ACTIVE_LOW so the firmware's gpio_pin_set_dt(_, 1) lights each colour.
+ */
+
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/ {
+    torabo_status_led_ext {
+        compatible = "gpio-leds";
+        tsle_red: led_ext_red {
+            gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;
+            label = "Extender LED red";
+        };
+        tsle_yg: led_ext_yg {
+            gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;
+            label = "Extender LED yellow-green";
+        };
+        tsle_grn: led_ext_grn {
+            gpios = <&gpio1 2 GPIO_ACTIVE_LOW>;
+            label = "Extender LED green";
+        };
+    };
+};

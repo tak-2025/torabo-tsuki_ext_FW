@@ -1,0 +1,3 @@
+name: torabo-reserved-layers
+append:
+  EXTRA_DTC_OVERLAY_FILE: torabo-reserved-layers.overlay

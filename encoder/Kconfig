@@ -1,0 +1,28 @@
+menuconfig ZMK_ENCODER_CONFIG
+    bool "Runtime-configurable rotary encoder (torabo-tsuki)"
+    help
+      Per-layer assignments for a rotary encoder — clockwise, counter-clockwise
+      and the push button — editable live over BLE from Torabo-Studio.
+
+      The encoder is not a keymap key: rotation rides ZMK's sensor path and the
+      button rides the input path, and both resolve what to fire from this store.
+      That is why an encoder needs no matrix transform, no physical-layout entry
+      and no keymap edits.
+
+      Default n; enable per build target (see the torabo-encoder-live snippet).
+
+if ZMK_ENCODER_CONFIG
+
+config ZMK_ENCODER_CONFIG_BLE
+    bool "Expose the encoder settings over a BLE GATT service"
+    depends on BT
+    default y
+    help
+      Encrypted GATT service e1f4ad00 to read/write the assignments live. The
+      config is ~124 B, so it fits in a single ATT write and needs no Write Long.
+
+module = ZMK_ENCODER_CONFIG
+module-str = ZMK Encoder Config
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # ZMK_ENCODER_CONFIG

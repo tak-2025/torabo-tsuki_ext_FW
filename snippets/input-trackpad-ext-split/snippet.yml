@@ -1,0 +1,4 @@
+name: input-trackpad-ext-split
+append:
+  EXTRA_DTC_OVERLAY_FILE: input-trackpad-ext-split.overlay
+  EXTRA_CONF_FILE: input-trackpad-ext-split.conf

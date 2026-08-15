@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>torabo-tsuki ファームウェアビルダー (v1)</title>
+<style>
+  :root { --bg:#0f1115; --panel:#1a1d24; --line:#2b2f3a; --fg:#e6e9ef; --muted:#9aa3b2; --accent:#6ea8fe; --warn:#ffcc66; --err:#ff7b7b; --ok:#7bd88f; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.6 "Segoe UI",system-ui,sans-serif; }
+  header { padding:18px 24px; border-bottom:1px solid var(--line); flex:0 0 auto; }
+  header h1 { margin:0; font-size:18px; }
+  header p { margin:4px 0 0; color:var(--muted); font-size:12px; }
+  /* 左右ペインはそれぞれ独立してスクロールする。以前は .wrap が min-height で
+     伸びるだけで高さが確定せず、overflow:auto があっても内部スクロールが出ずに
+     ページ全体が伸びていた（左の設定項目が増えると右の生成物が下へ流れる）。
+     ヘッダ高さを決め打ちしないよう body を縦 flex にして残り高さを .wrap に渡す。 */
+  .wrap { display:grid; grid-template-columns: 400px 1fr; gap:0; }
+  .controls { padding:20px 24px; border-right:1px solid var(--line); overflow-y:auto; min-height:0; }
+  .output { padding:20px 24px; overflow-y:auto; min-height:0; }
+  @media (min-width: 860px) {
+    html { height:100%; }
+    body { height:100vh; height:100dvh; display:flex; flex-direction:column; overflow:hidden; }
+    .wrap { flex:1 1 auto; min-height:0; }
+  }
+  /* narrow: 1カラムに畳んでページ全体スクロール（ペインを縦に潰さない） */
+  @media (max-width: 859px) {
+    .wrap { grid-template-columns: 1fr; }
+    .controls { border-right:none; border-bottom:1px solid var(--line); }
+  }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:16px; }
+  .card h2 { margin:0 0 10px; font-size:13px; letter-spacing:.04em; color:var(--accent); text-transform:uppercase; }
+  label.row { display:flex; align-items:center; gap:8px; padding:5px 0; cursor:pointer; }
+  label.row input[type=checkbox] { width:16px; height:16px; accent-color:var(--accent); }
+  .sub { color:var(--muted); font-size:12px; margin-left:24px; }
+  select, input[type=number], input[type=text] { background:#10131a; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; font:inherit; }
+  .sideblk { border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:8px; }
+  .sideblk h3 { margin:0 0 6px; font-size:13px; }
+  .field { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:4px 0; }
+  .field span { color:var(--muted); }
+  .field.indent span { padding-left:12px; }
+  .badge { display:inline-block; font-size:11px; padding:1px 7px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
+  .badge.central { color:var(--ok); border-color:var(--ok); }
+  pre { background:#0a0c10; border:1px solid var(--line); border-radius:8px; padding:12px 14px; overflow:auto; font:12.5px/1.55 "Cascadia Code",Consolas,monospace; margin:0; white-space:pre; }
+  .filehdr { display:flex; justify-content:space-between; align-items:center; margin:18px 0 6px; }
+  .filehdr .path { font:12.5px Consolas,monospace; color:var(--accent); }
+  button.copy { background:#222631; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:4px 12px; cursor:pointer; font-size:12px; }
+  button.copy:hover { border-color:var(--accent); }
+  .msgs { margin-bottom:8px; }
+  .msg { padding:8px 12px; border-radius:8px; margin-bottom:6px; font-size:12.5px; border:1px solid; }
+  .msg.err { border-color:var(--err); background:rgba(255,123,123,.08); color:#ffb3b3; }
+  .msg.warn { border-color:var(--warn); background:rgba(255,204,102,.07); color:#ffdd99; }
+  .msg.ok  { border-color:var(--ok);  background:rgba(123,216,143,.07); color:#aef0bd; }
+  .hint { color:var(--muted); font-size:11.5px; margin-top:4px; }
+  .tierbadge { display:inline-block; font-size:11px; padding:1px 8px; border-radius:99px; margin-left:8px; }
+  .tier-BN { color:var(--ok); border:1px solid var(--ok); }
+  .tier-FW { color:var(--warn); border:1px solid var(--warn); }
+  hr { border:none; border-top:1px solid var(--line); margin:14px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>torabo-tsuki ファームウェアビルダー <span class="badge">v1 physical model</span></h1>
+  <p>各サイドの「標準FFC・拡張基盤・拡張FFC」に付ける現物を選ぶと build.yaml / conf / west.yml を生成します。生成物を fork の各ファイルに置き換えてビルドしてください。値（コンボ内容・速度等）は焼いた後 BLE で編集します。</p>
+</header>
+
+<div class="wrap">
+  <!-- ===================== CONTROLS ===================== -->
+  <div class="controls">
+
+    <div class="card">
+      <h2>構成</h2>
+      <div class="field">
+        <span>central（トラックボール/設定がある側）</span>
+        <select id="central" title="central 側">
+          <option value="right">右 (right)</option>
+          <option value="left">左 (left)</option>
+        </select>
+      </div>
+      <div class="hint">central 側に機能スニペットと listener が乗り、もう一方が peripheral になります。</div>
+    </div>
+
+    <div class="card">
+      <h2>デバイス名（Bluetooth / USB）</h2>
+      <div class="field">
+        <span>名前</span>
+        <input type="text" id="kbname" value="torabo-tsuki" maxlength="28" style="width:190px" title="BLE/USB デバイス名">
+      </div>
+      <div class="hint">ペアリング時に表示される名前。16文字程度まで推奨（超過時は自動で BT_DEVICE_NAME_MAX も出力）。変更後は各ホストで再ペアリングが必要。全プロファイル共通。</div>
+    </div>
+
+    <div class="card">
+      <h2>ハードウェア構成（各サイド）</h2>
+      <div class="hint">各サイド = 標準FFC 1本 ＋（拡張基盤を付ければ）拡張FFC 1本。標準FFCは1デバイス排他（ボール/パッド/エンコーダは同じピンを奪い合う）。エンコーダは標準・拡張どちらにも可。トラックボールは標準FFCのみ（拡張にSPIなし）。</div>
+
+      <div class="sideblk" id="blk_left">
+        <h3>左 (left) <span class="badge" id="role_left"></span></h3>
+        <div class="field"><span>標準FFC</span>
+          <select class="std-sel" data-side="left" title="左 標準FFC">
+            <option value="none">なし</option>
+            <option value="ball">トラックボール</option>
+            <option value="pad">ミニトラックパッド</option>
+            <option value="encoder">ロータリーエンコーダ</option>
+          </select></div>
+        <div class="field"><span>拡張基盤</span>
+          <select class="ext-sel" data-side="left" title="左 拡張基盤">
+            <option value="none">なし</option>
+            <option value="fpc">FPCのみ</option>
+            <option value="led">FPC+LED</option>
+          </select></div>
+        <div class="field indent row-extdev" data-side="left"><span>└ 拡張FFC</span>
+          <select class="extdev-sel" data-side="left" title="左 拡張FFC">
+            <option value="none">なし</option>
+            <option value="pad">ミニトラックパッド</option>
+            <option value="encoder">ロータリーエンコーダ</option>
+          </select></div>
+        <div class="field indent row-variant" data-side="left"><span>└ パッド種別</span>
+          <select class="variant-sel" data-side="left" title="公式 / 自作(DIY)">
+            <option value="official">公式</option>
+            <option value="diy">自作 (DIY)</option>
+          </select></div>
+        <label class="row row-led" data-side="left"><input type="checkbox" class="useled-chk" data-side="left" checked> 拡張LEDを使う</label>
+        <div class="field indent row-ledmode" data-side="left"><span>└ LED制御</span>
+          <select class="ledmode-sel" data-side="left" title="LEDの制御方式">
+            <option value="legacy">従来（固定・実績あり）</option>
+            <option value="live">ライブ設定（Studioで編集・未実機検証）</option>
+          </select></div>
+      </div>
+
+      <div class="sideblk" id="blk_right">
+        <h3>右 (right) <span class="badge" id="role_right"></span></h3>
+        <div class="field"><span>標準FFC</span>
+          <select class="std-sel" data-side="right" title="右 標準FFC">
+            <option value="none">なし</option>
+            <option value="ball">トラックボール</option>
+            <option value="pad">ミニトラックパッド</option>
+            <option value="encoder">ロータリーエンコーダ</option>
+          </select></div>
+        <div class="field"><span>拡張基盤</span>
+          <select class="ext-sel" data-side="right" title="右 拡張基盤">
+            <option value="none">なし</option>
+            <option value="fpc">FPCのみ</option>
+            <option value="led">FPC+LED</option>
+          </select></div>
+        <div class="field indent row-extdev" data-side="right"><span>└ 拡張FFC</span>
+          <select class="extdev-sel" data-side="right" title="右 拡張FFC">
+            <option value="none">なし</option>
+            <option value="pad">ミニトラックパッド</option>
+            <option value="encoder">ロータリーエンコーダ</option>
+          </select></div>
+        <div class="field indent row-variant" data-side="right"><span>└ パッド種別</span>
+          <select class="variant-sel" data-side="right" title="公式 / 自作(DIY)">
+            <option value="official">公式</option>
+            <option value="diy">自作 (DIY)</option>
+          </select></div>
+        <label class="row row-led" data-side="right"><input type="checkbox" class="useled-chk" data-side="right" checked> 拡張LEDを使う</label>
+        <div class="field indent row-ledmode" data-side="right"><span>└ LED制御</span>
+          <select class="ledmode-sel" data-side="right" title="LEDの制御方式">
+            <option value="legacy">従来（固定・実績あり）</option>
+            <option value="live">ライブ設定（Studioで編集・未実機検証）</option>
+          </select></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>機能（central に登録）</h2>
+      <label class="row"><input type="checkbox" id="f_trackball" checked> トラックボール設定 / オートマウスレイヤー</label>
+      <div class="sub">torabo-trackball</div>
+      <label class="row"><input type="checkbox" id="f_macros" checked> カスタムマクロ（&dmac）</label>
+      <div class="sub">torabo-macros ／ keymap に &dmac N の配置が別途必要</div>
+      <label class="row"><input type="checkbox" id="f_combos" checked> ダイナミックコンボ</label>
+      <div class="sub">torabo-combos ／ keymap に combos{} を書かないこと</div>
+      <label class="row"><input type="checkbox" id="f_trackpadlive"> トラックパッド レイヤー機能割当（BLEライブ編集）</label>
+      <div class="sub">torabo-trackpad-live ／ 層ごとに 移動/スクロール/音量/輝度/ズーム/ブラウザ を割当。ext接続パッド＋相手側パッドに対応</div>
+      <label class="row"><input type="checkbox" id="f_livefeed" checked> ライブフィード（Torabo-Float 用）</label>
+      <div class="sub">torabo-live-feed ／ キー押下とレイヤー状態を BLE NOTIFY で PC の Torabo-Float オーバーレイへ push。central 専用・未購読時はゼロコスト</div>
+      <hr>
+      <label class="row"><input type="checkbox" id="f_layers" checked> 予約レイヤー（キーマップ数の追加枠）</label>
+      <div class="field" style="margin-left:24px;">
+        <span>枚数 (0–10)</span>
+        <input type="number" id="f_layers_n" min="0" max="10" value="10" style="width:70px" title="予約レイヤー枚数">
+      </div>
+      <div class="sub">torabo-reserved-layers ＋ CONFIG_TORABO_RESERVED_LAYERS=N</div>
+    </div>
+  </div>
+
+  <!-- ===================== OUTPUT ===================== -->
+  <div class="output">
+    <div id="tier"></div>
+    <div class="msgs" id="msgs"></div>
+
+    <div class="filehdr"><span class="path">build.yaml</span><button type="button" class="copy" data-target="out_build">コピー</button></div>
+    <pre id="out_build"></pre>
+
+    <div class="filehdr"><span class="path" id="conf_path">boards/shields/torabo_tsuki_lp/&lt;shield&gt;.conf（追記）</span><button type="button" class="copy" data-target="out_conf">コピー</button></div>
+    <pre id="out_conf"></pre>
+
+    <div class="filehdr"><span class="path">config/west.yml（モジュール参照・ドライバ fork の指定）</span><button type="button" class="copy" data-target="out_west">コピー</button></div>
+    <pre id="out_west"></pre>
+  </div>
+</div>
+
+<script>
+// ===================================================================
+// snippet レジストリ — PATTERN-MATRIX.md §0/§2 と一致
+// ===================================================================
+const SHIELD = side => `torabo_tsuki_lp_${side}`;
+const other  = side => side === 'left' ? 'right' : 'left';
+
+const SNIP = {
+  studio:'studio-rpc-usb-uart', splitCentral:'split-central',
+  tb:'input-trackball', tpS:'input-trackpad-mini',
+  tpX:'input-trackpad-ext', tpXdiy:'input-trackpad-ext-diy',
+  lst:'input-listener', spl0:'input-split', rcv0:'input-split-listener',
+  led:'torabo-status-led-ext', liveExt:'torabo-trackpad-live-ext', liveSplit:'torabo-trackpad-live-split',
+  fTrackball:'torabo-trackball', fMacros:'torabo-macros', fCombos:'torabo-combos', fLayers:'torabo-reserved-layers',
+  // エンコーダ（回転）: 実装済み。物理側 ＋（相手が peripheral なら）central 受け
+  encS:'input-encoder',     encRecv:'input-encoder-recv',        // 標準FFC (A=P0.18/B=P0.16)
+  encX:'input-encoder-ext', encXRecv:'input-encoder-ext-recv',   // 拡張FFC (A=P0.17/B=P0.21)
+  // 周辺(peripheral)側の拡張パッド split エクスポート: 実装済み（reg=0 / reg=1）
+  tpXspl:'input-trackpad-ext-split', tpXspl1:'input-trackpad-ext-split-reg1',
+  rcv1:'input-split-listener-reg1',
+  // エンコーダのライブ設定（Studio のエンコーダタブ）。回転はルーター behavior、
+  // ボタンは gpio-keys → (peripheral なら split 中継) → 入力プロセッサ。
+  // どちらもキー位置を消費しないので transform/keymap は無改造。
+  encLive:'torabo-encoder-live',                     // central: ストア＋GATT＋回転ルーター
+  encBtnSplit:'torabo-encoder-btn-split',            // peripheral 標準FFC: ボタン P0.20 → split(reg2)
+  encBtnSplitExt:'torabo-encoder-btn-split-ext',     // peripheral 拡張FFC: ボタン P0.31 → split(reg2)
+  encBtnRecv:'torabo-encoder-btn-recv',              // central: split(reg2) を受けて発火
+  encBtnLocal:'torabo-encoder-btn-local',            // central 標準FFC: ボタン P0.20（中継不要）
+  encBtnLocalExt:'torabo-encoder-btn-local-ext',     // central 拡張FFC: ボタン P0.31（中継不要）
+  // 拡張LED（ライブ設定）。旧 torabo-status-led-ext とは同じGPIOを奪い合うので排他。
+  ledLive:'torabo-led-live',                        // central: ルール表＋GATT＋両側の判断
+  ledPeriph:'torabo-led-ext-periph',                // peripheral: 言われた色を出すだけ＋切断時の自力表示
+  // ライブフィード（キー/レイヤーを NOTIFY で push）。Torabo-Float オーバーレイ用。
+  // central のみ（レイヤー状態とグローバルキー位置は central だけが知る）。
+  liveFeed:'torabo-live-feed',
+  // FW自己申告（バージョン・搭載機能・ワイヤ版数）。Studio がタブの出し分けに使う。
+  caps:'torabo-caps',
+};
+// 未実装キー → 表示ラベル（現在なし＝全構成ビルド可能）
+const MISSING_LABEL = {};
+
+// ===================================================================
+// state
+// ===================================================================
+const state = {
+  central:'right',
+  keyboardName:'torabo-tsuki',
+  features:{ trackball:true, macros:true, combos:true, layers:true, layersN:10, trackpadlive:false, liveFeed:true },
+  sides:{
+    left:  { std:'none', ext:'none', extDev:'none', variant:'official', useLed:true, ledMode:'legacy' },
+    right: { std:'ball', ext:'none', extDev:'none', variant:'official', useLed:true, ledMode:'legacy' },
+  },
+};
+
+// ===================================================================
+// 保存・復元（localStorage） — リロードで選択が消えないように。
+// render() のたびに全 state を保存し、起動時にキー単位でマージ復元する
+// （保存後に増えた新キーは既定値のまま。壊れた保存値は無視して既定値で起動）。
+// ===================================================================
+const STORE_KEY = 'torabo-fw-builder-state-v1';
+function saveState(){
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  catch(e){ /* プライベートモード等で保存できなくても動作は継続 */ }
+}
+function loadState(){
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+    if (!saved || typeof saved !== 'object') return;
+    if (saved.central === 'left' || saved.central === 'right') state.central = saved.central;
+    if (typeof saved.keyboardName === 'string') state.keyboardName = saved.keyboardName;
+    if (saved.features && typeof saved.features === 'object')
+      for (const k of Object.keys(state.features))
+        if (k in saved.features) state.features[k] = saved.features[k];
+    if (saved.sides && typeof saved.sides === 'object')
+      for (const side of ['left','right']){
+        if (!saved.sides[side] || typeof saved.sides[side] !== 'object') continue;
+        for (const k of Object.keys(state.sides[side]))
+          if (k in saved.sides[side]) state.sides[side][k] = saved.sides[side][k];
+      }
+  } catch(e){ /* 壊れた保存データは無視して既定値で起動 */ }
+}
+// 復元した state を「サイドブロック以外」のコントロールへ反映（サイド側は render() が毎回同期する）
+function syncStaticControls(){
+  document.getElementById('central').value = state.central;
+  document.getElementById('kbname').value = state.keyboardName;
+  document.getElementById('f_trackball').checked   = state.features.trackball;
+  document.getElementById('f_macros').checked      = state.features.macros;
+  document.getElementById('f_combos').checked      = state.features.combos;
+  document.getElementById('f_trackpadlive').checked= state.features.trackpadlive;
+  document.getElementById('f_livefeed').checked    = state.features.liveFeed;
+  document.getElementById('f_layers').checked      = state.features.layers;
+  document.getElementById('f_layers_n').value      = state.features.layersN;
+}
+
+// ===================================================================
+// helpers
+// ===================================================================
+const isPointing = d => d==='ball' || d==='pad';
+// 拡張FFCに載る実デバイス（拡張基盤が無ければ none 扱い）
+function sideDevices(side){
+  const s = state.sides[side];
+  return { std:s.std, ext: (s.ext==='none' ? 'none' : s.extDev) };
+}
+// peripheral の pointing デバイス列（index = reg スロット）。encoder は sensor 経路で枠を食わない。
+function peripheralPointing(periph){
+  const d = sideDevices(periph);
+  const list = [];
+  if (isPointing(d.std)) list.push('std');
+  if (d.ext==='pad')     list.push('ext');
+  return list;
+}
+
+// ===================================================================
+// 生成モデル（両サイドの snippet ＋ 未実装依存）
+// ===================================================================
+function buildModel(){
+  const central = state.central, periph = other(central);
+  const miss = new Set();
+  const M = k => { miss.add(k); return SNIP[k]; };
+
+  const cd = sideDevices(central), pd = sideDevices(periph);
+  const pPoint = peripheralPointing(periph);
+  const regOf = pos => pPoint.indexOf(pos); // 0/1/-1
+
+  // ---- peripheral ----
+  const P = [SNIP.studio];
+  if      (pd.std==='ball')    P.push(SNIP.tb, SNIP.spl0);
+  else if (pd.std==='pad')     P.push(SNIP.tpS, SNIP.spl0);
+  else if (pd.std==='encoder') P.push(SNIP.encS);            // 標準エンコーダ（回転）実装済み
+  if (pd.ext==='pad'){
+    const r = regOf('ext');                                  // 拡張パッドの reg スロット（encoder は枠を食わない）
+    P.push(r===1 ? SNIP.tpXspl1 : SNIP.tpXspl);              // reg=0 / reg=1 とも実装済み
+    if (state.sides[periph].variant==='diy') P.push(SNIP.tpXdiy);  // DIY init 差し替えは split 版にも効く
+  }
+  else if (pd.ext==='encoder') P.push(SNIP.encX);
+  // エンコーダのボタン: peripheral 側は GPIO を split(reg=2) で central へ流すだけ。
+  // ピンは載っている FFC で決まる（標準=P0.20 / 拡張=P0.31）。
+  if      (pd.std==='encoder') P.push(SNIP.encBtnSplit);
+  else if (pd.ext==='encoder') P.push(SNIP.encBtnSplitExt);
+  // 拡張LED（peripheral 側）: 表示器として動く。アノードが拡張パッドの電源に乗るので
+  // パッドが無い側は光らない → その場合は載せない。
+  if (state.sides[periph].ext==='led' && state.sides[periph].useLed && pd.ext==='pad'
+      && state.sides[central].ledMode==='live')
+    P.push(SNIP.ledPeriph);
+
+  // ---- central ----
+  const C = [SNIP.studio, SNIP.splitCentral];
+  if      (cd.std==='ball')    C.push(SNIP.tb, SNIP.lst);
+  else if (cd.std==='pad')     C.push(SNIP.tpS, SNIP.lst);
+  else if (cd.std==='encoder') C.push(SNIP.encS);            // central 自身のエンコーダはローカル
+  if (cd.ext==='pad'){
+    C.push(SNIP.tpX);
+    if (state.sides[central].variant==='diy') C.push(SNIP.tpXdiy);
+    if (state.features.trackpadlive) C.push(SNIP.liveExt);
+  } else if (cd.ext==='encoder') C.push(SNIP.encX);
+  // peripheral pointing の受け口（index = reg スロット）
+  pPoint.forEach((_,i)=> C.push(i===0 ? SNIP.rcv0 : SNIP.rcv1));
+  // peripheral エンコーダの分割センサー受け口（central）
+  if (pd.std==='encoder') C.push(SNIP.encRecv);
+  if (pd.ext==='encoder') C.push(SNIP.encXRecv);
+  // エンコーダのライブ設定は central に置く（ストア／GATT／behavior は host と話す側だけ）
+  const encOnPeriph = pd.std==='encoder' || pd.ext==='encoder';
+  const encOnCentral = cd.std==='encoder' || cd.ext==='encoder';
+  if (encOnPeriph || encOnCentral){
+    C.push(SNIP.encLive); // ストア＋GATT＋回転ルーター（sensor-bindings を差し替え）
+    // ボタン: 相手側にあるなら split を受ける、central 自身なら GPIO を直に読む
+    if (encOnPeriph)            C.push(SNIP.encBtnRecv);
+    else if (cd.std==='encoder') C.push(SNIP.encBtnLocal);
+    else                         C.push(SNIP.encBtnLocalExt);
+  }
+  // 相手側にパッドがあれば split ライブ設定
+  if (state.features.trackpadlive && (pd.std==='pad' || pd.ext==='pad')) C.push(SNIP.liveSplit);
+  // 拡張LED。2方式あり、同じGPIOを奪い合うので排他。
+  //   legacy = torabo-status-led-ext … 固定動作（プロファイル色＋切断赤）。実績あり
+  //   live   = torabo-led-live       … ルール表＋GATT。Studioで編集。未実機検証
+  // live は central が「頭脳」なので、どちらか一方にでもLEDがあれば central に載せる
+  // （左だけにLEDがある構成で載せ忘れると、左は誰にも制御されない置物になる）。
+  const ledWorks = side => state.sides[side].ext==='led' && state.sides[side].useLed
+                           && sideDevices(side).ext==='pad';
+  const ledLiveOn = (ledWorks('left') || ledWorks('right')) && state.sides[central].ledMode==='live';
+  if (ledLiveOn)                              C.push(SNIP.ledLive);
+  else if (ledWorks(central))                 C.push(SNIP.led);   // 従来版（central のみ）
+  // FW が自分を名乗る（Studio が実在するタブだけ出せるように）。常に入れる。
+  C.push(SNIP.caps);
+  // ライブフィード（キー/レイヤーを NOTIFY で push）。central 専用・未購読時ゼロコスト
+  // なのでチェックが入っていれば載せる（Torabo-Float が繋がったときだけ発火する）。
+  if (state.features.liveFeed) C.push(SNIP.liveFeed);
+  // 機能スニペット
+  if (state.features.trackball) C.push(SNIP.fTrackball);
+  if (state.features.macros)    C.push(SNIP.fMacros);
+  if (state.features.combos)    C.push(SNIP.fCombos);
+  if (state.features.layers && state.features.layersN>0) C.push(SNIP.fLayers);
+
+  const sides = {}; sides[central]=C; sides[periph]=P;
+  return { central, periph, sides, missing:miss };
+}
+
+// ===================================================================
+// 妥当性チェック
+// ===================================================================
+function validate(model){
+  const msgs=[];
+  const { central, periph, missing } = model;
+  const cd=sideDevices(central), pd=sideDevices(periph);
+
+  // 未実装依存 → エラー
+  if (missing.size){
+    const labels=[...missing].map(k=>MISSING_LABEL[k]).filter(Boolean).join(' ／ ');
+    msgs.push({ k:'err', t:`この構成は未実装スニペットに依存します: ${labels}。現状ビルド不可（PATTERN-MATRIX.md §5 のバックログ実装後に解禁）。UIモデル確認用として生成物は表示します。` });
+  }
+
+  // 入力デバイス皆無
+  const anyInput = ['left','right'].some(s=>{const d=sideDevices(s); return d.std!=='none'||d.ext!=='none';});
+  if (!anyInput) msgs.push({ k:'warn', t:'入力デバイスが1つも選ばれていません。' });
+
+  // エンコーダはキーボード全体で1個まで（ZMK 制約）
+  const encCount = ['left','right'].reduce((n,s)=>{
+    const d = sideDevices(s);
+    return n + (d.std==='encoder'?1:0) + (d.ext==='encoder'?1:0);
+  }, 0);
+  if (encCount > 1) {
+    msgs.push({ k:'err', t:`エンコーダが ${encCount} 個選ばれています。現状の実装は「キーボード全体で1個」まで。ZMK の keymap-sensors はグローバルな sensor_index で割当を引くため、各スニペットが LEN=1 の sensors ノードを張る現状では index が衝突し、2個目が1個目と同じ割当を叩きます。複数対応には全エンコーダを固定順で並べた単一の sensors 宣言が必要（未実装）。` });
+  }
+
+  // デバイス名
+  const kbname=(state.keyboardName||'').trim();
+  if (!kbname){ msgs.push({ k:'err', t:'デバイス名が空です。名前を入力してください（空だとビルドで既定名になります）。' }); }
+  else if (kbname!=='torabo-tsuki'){
+    if (kbname.includes('"')) msgs.push({ k:'err', t:'デバイス名に " （ダブルクオート）は使えません。' });
+    if (kbname.length>16) msgs.push({ k:'warn', t:`デバイス名が ${kbname.length} 文字です。16文字超は広告パケットに収まらず一部ホストで切れて見えることがあります（27文字超は BT_DEVICE_NAME_MAX も自動出力）。` });
+    msgs.push({ k:'warn', t:'デバイス名を変えたら、各ホストで既存ペアリングを削除して再ペアリングしてください（ホストが旧名をキャッシュします）。再ビルド＋再フラッシュも必要。' });
+  }
+
+  // 機能ごとの注意
+  if (state.features.macros) msgs.push({ k:'warn', t:'マクロ: keymap の任意キーに &dmac 0〜19 を配置してください（GUIでは自動化されません）。中身は BLE で編集。' });
+  if (state.features.combos) msgs.push({ k:'warn', t:'コンボ: keymap に combos{} ブロックを置かないこと（純正エンジンと二重所有になりビルド不能/競合）。' });
+
+  // 拡張LED — アノードが拡張パッドの電源レール(P0.24)に乗っているため、
+  // 同じ側に拡張パッドが無いとレールを誰も上げず LED は光らない。
+  if (state.sides[central].ext==='led' && state.sides[central].useLed){
+    if (cd.ext !== 'pad'){
+      msgs.push({ k:'err', t:`拡張LED: LEDのアノードは拡張パッドの電源レール(P0.24)に乗っています。central（${central}）の拡張FFCが「ミニトラックパッド」でないと、そのレールを上げるものが無く LED は光りません。拡張FFCをパッドにするか、拡張LEDのチェックを外してください。` });
+    } else {
+      if (state.sides[central].ledMode==='live'){
+        msgs.push({ k:'warn', t:'拡張LED（ライブ設定）: ルール表を Studio の LED タブで編集（レイヤー/修飾キー/Caps/電池/切断 を 色×点滅 で割当）。左右独立。⚠ この方式は【未実機検証】です。確実に動くものが欲しい場合は「従来（固定・実績あり）」を選んでください。' });
+      } else {
+        msgs.push({ k:'warn', t:'拡張LED（従来）: BLEプロファイル切替（色コンボ1.5秒）＋相手側切断（赤を点灯しっぱなし）。実績のある固定動作で、Studio からは変更できません。切断放置は電池を食います（ライブ設定なら点滅にできます）。' });
+      }
+    }
+  }
+
+  // 拡張LED — peripheral 側にLED実機があるのに従来方式のままだと、
+  // 従来版（torabo-status-led-ext）は central のLEDしか駆動しないため誰にも制御されず消灯したまま。
+  if (state.sides[periph].ext==='led' && state.sides[periph].useLed && pd.ext==='pad'
+      && state.sides[central].ledMode==='legacy'){
+    msgs.push({ k:'warn', t:`拡張LED: peripheral（${periph}）側の拡張LEDは「従来（固定）」方式では制御されず、消灯したままになります（従来版は central 側LED専用）。この LED を使うには LED制御を「ライブ設定」（LEDライブ設定）に切り替えてください（central に torabo-led-live、${periph} に torabo-led-ext-periph が載ります）。` });
+  }
+
+  // トラックパッド ライブ設定
+  if (state.features.trackpadlive){
+    const centralExtPad = cd.ext==='pad';
+    const periphPad = pd.std==='pad' || pd.ext==='pad';
+    if (!centralExtPad && !periphPad)
+      msgs.push({ k:'err', t:`トラックパッド ライブ設定: 対象のトラックパッドがありません。central（${central}）の拡張FFCをパッドにするか、相手側（${periph}）にパッドを載せてください。` });
+    else {
+      const tgt=[centralExtPad?`${central}拡張パッド`:null, periphPad?`${periph}パッド`:null].filter(Boolean).join(' と ');
+      msgs.push({ k:'warn', t:`トラックパッド ライブ設定: ${tgt} を Studio のトラックパッドタブで編集→即反映（NVS保存）。既定は 層0/1=移動・層2=横スクロール・層3=縦スクロール。` });
+    }
+  }
+
+  // DIY パッド
+  ['left','right'].forEach(s=>{
+    if (sideDevices(s).ext==='pad' && state.sides[s].variant==='diy')
+      msgs.push({ k:'ok', t:`${s} 拡張パッド(DIY): 公式 input-trackpad-ext に input-trackpad-ext-diy を重ねて init を差し替えます。DIY用 init 未確定のうちは公式と同じ挙動。` });
+  });
+
+  if (!msgs.some(m=>m.k==='err')) msgs.unshift({ k:'ok', t:'設定OK。生成物を fork の各ファイルへ置き換えてビルドしてください。' });
+  return msgs;
+}
+
+// ===================================================================
+// 生成
+// ===================================================================
+function entry(side, role, model){
+  const snips = model.sides[side];
+  let s = `  - board: bmp_boost\n    shield: ${SHIELD(side)}\n    snippet: "${snips.join(' ')}"`;
+  // 予約レイヤーの枚数は DTS の前処理マクロで渡す。Zephyr は devicetree を Kconfig
+  // より先に処理し DTS に autoconf.h を渡さないので、conf の CONFIG_* は overlay から
+  // 見えない（見えないまま #if を書いていたので、以前は0枚＝Studio の「+」が無効だった）。
+  if (snips.includes(SNIP.fLayers))
+    s += `\n    cmake-args: -DDTS_EXTRA_CPPFLAGS="-DTORABO_RESERVED_LAYERS=${state.features.layersN}"`;
+  s += `\n    artifact-name: ${SHIELD(side)}_${role}`;
+  return s;
+}
+function genBuildYaml(model){
+  return [
+    'include:',
+    entry(model.central, 'central', model),
+    entry(model.periph, 'peripheral', model),
+    '  - board: bmp_boost',
+    '    shield: settings_reset',
+    '',
+  ].join('\n');
+}
+// ===================================================================
+// トラックパッド ライブ設定: デバイス素性メタ（config.h の TP_META と一致させる）
+// Studio はこのメタからラベルを生成するので、どのハード構成でも正しく表示できる。
+//   bit0-1 side(1=左,2=右) / bit2-3 conn(1=標準FFC,2=拡張FPC) / bit4-5 kind(1=パッド,2=ボール,3=エンコーダ)
+// wire のデバイス枠: dev0 = peripheral が split で出す pointing / dev1 = central の拡張パッド
+// ===================================================================
+const TP_META = (side, conn, kind) => ((side & 3) | ((conn & 3) << 2) | ((kind & 3) << 4));
+const TP_SIDE = { left:1, right:2 }, TP_CONN = { std:1, ext:2 }, TP_KIND = { pad:1, ball:2, encoder:3 };
+
+function tpDeviceMeta(model){
+  const { central, periph } = model;
+  const pd = sideDevices(periph), cd = sideDevices(central);
+  let dev0 = 0, dev1 = 0;
+  // dev0: peripheral の reg=0 pointing（標準にあれば標準、無ければ拡張パッド）
+  if      (isPointing(pd.std)) dev0 = TP_META(TP_SIDE[periph], TP_CONN.std, TP_KIND[pd.std]);
+  else if (pd.ext === 'pad')   dev0 = TP_META(TP_SIDE[periph], TP_CONN.ext, TP_KIND.pad);
+  // dev1: central の拡張パッド
+  if (cd.ext === 'pad') dev1 = TP_META(TP_SIDE[central], TP_CONN.ext, TP_KIND.pad);
+  return { dev0, dev1 };
+}
+
+function genConf(model){
+  const lines=[]; const name=(state.keyboardName||'').trim();
+  if (name && name!=='torabo-tsuki'){
+    lines.push(`CONFIG_ZMK_KEYBOARD_NAME="${name}"`);
+    if (name.length>27) lines.push(`CONFIG_BT_DEVICE_NAME_MAX=${name.length+1}`);
+  }
+  if (state.features.layers && state.features.layersN>0) lines.push(`CONFIG_TORABO_RESERVED_LAYERS=${state.features.layersN}`);
+  // 拡張LED: どちらの半分に「実際に光るLED」があるかを FW に教える。
+  // FW はこれを capability として Studio に申告し、Studio は実在する側だけ出す。
+  // 光る条件 = FPC+LED基盤 ＋ 同じ側に拡張パッド（アノードがその電源レールに乗るため）。
+  const ledOn = side => state.sides[side].ext==='led' && state.sides[side].useLed
+                        && sideDevices(side).ext==='pad';
+  const liveLed = state.sides[model.central].ledMode==='live' && (ledOn('left') || ledOn('right'));
+  if (liveLed){
+    lines.push(`# 拡張LEDの実在（Studio はこれを見てタブと左右を出し分ける）`);
+    lines.push(`CONFIG_ZMK_LED_CONFIG_LEFT_PRESENT=${ledOn('left') ? 'y' : 'n'}`);
+    lines.push(`CONFIG_ZMK_LED_CONFIG_RIGHT_PRESENT=${ledOn('right') ? 'y' : 'n'}`);
+    lines.push(`CONFIG_ZMK_LED_CONFIG_CENTRAL_IS_LEFT=${model.central==='left' ? 'y' : 'n'}`);
+  }
+  // トラックパッド ライブ設定を使うときだけ。Studio のデバイス名がこれで決まる。
+  if (state.features.trackpadlive){
+    const { dev0, dev1 } = tpDeviceMeta(model);
+    lines.push(`# Studio に見せるデバイス素性（0 = 不明 → Studio 側は「デバイス N」表示にフォールバック）`);
+    lines.push(`CONFIG_ZMK_TRACKPAD_CONFIG_DEV0_META=${dev0}`);
+    lines.push(`CONFIG_ZMK_TRACKPAD_CONFIG_DEV1_META=${dev1}`);
+  }
+  return lines.length ? lines.join('\n') : '# （この conf への追記は不要）';
+}
+function genWest(model){
+  const joined = model.sides.left.concat(model.sides.right).join(' ');
+  const usesModule = /torabo-|input-trackpad-ext/.test(joined);
+  // トラックパッド(IQS7211E)を積む構成は、press&hold を出す改変入り fork が要る。
+  // 上流ドライバは INPUT_BTN_2 を出さないので、上流のままだと GST_HOLD（Studio の
+  // 「長押し」割当）が無反応になる。ビルドは通ってしまうので気づきにくい。
+  const usesPad = /input-trackpad/.test(joined);
+  if (!usesModule && !usesPad)
+    return '# （torabo-tsuki_ext_FW モジュールもトラックパッドも使わないため west.yml の変更は不要）';
+  const o = [];
+  if (usesPad) o.push(
+    '# ⚠ zmk-driver-iqs7211e は「追記」ではなく「置き換え」です。',
+    '#    既存の  - name: zmk-driver-iqs7211e / remote: sekigon-gonnoc  の2〜3行を必ず削除してください。',
+    '#    同名の project が2つあると west が Malformed manifest（used twice）で落ちます。',
+    '',
+  );
+  o.push(
+    'manifest:','  remotes:','    # …既存はそのまま…',
+    '    - name: tak-2025','      url-base: https://github.com/tak-2025',
+    '  projects:','    # …既存はそのまま…',
+  );
+  if (usesPad) o.push(
+    '    # ↓ 既存の zmk-driver-iqs7211e エントリを削除した上で、これを入れる。',
+    '    #   press&hold -> INPUT_BTN_2 を出す改変入り fork（GPL-3.0 のまま）。',
+    '    #   上流(sekigon-gonnoc/master)のままだと Studio の「長押し」割当が無反応。',
+    '    - name: zmk-driver-iqs7211e','      remote: tak-2025','      revision: torabo-tsuki',
+  );
+  if (usesModule) o.push(
+    '    - name: torabo-tsuki_ext_FW','      remote: tak-2025','      revision: main',
+  );
+  o.push('  self:','    path: config');
+  return o.join('\n');
+}
+
+// ===================================================================
+// 描画
+// ===================================================================
+function render(){
+  const model = buildModel();
+  const central = state.central, periph = other(central);
+
+  // roles
+  document.getElementById('role_left').textContent  = central==='left' ? 'central' : 'peripheral';
+  document.getElementById('role_right').textContent = central==='right'? 'central' : 'peripheral';
+  document.getElementById('role_left').className  = 'badge ' + (central==='left'?'central':'');
+  document.getElementById('role_right').className = 'badge ' + (central==='right'?'central':'');
+
+  // 条件表示（拡張FFC / パッド種別 / 拡張LED）
+  for (const side of ['left','right']){
+    const s = state.sides[side];
+    document.querySelector('.row-extdev[data-side='+side+']').style.display = s.ext!=='none' ? '' : 'none';
+    document.querySelector('.row-variant[data-side='+side+']').style.display = (s.ext!=='none' && s.extDev==='pad') ? '' : 'none';
+    const ledRowOn = (side===central && s.ext==='led');
+    document.querySelector('.row-led[data-side='+side+']').style.display = ledRowOn ? '' : 'none';
+    document.querySelector('.row-ledmode[data-side='+side+']').style.display = (ledRowOn && s.useLed) ? '' : 'none';
+    document.querySelector('.ledmode-sel[data-side='+side+']').value = s.ledMode;
+    // セレクタ値の同期
+    document.querySelector('.std-sel[data-side='+side+']').value = s.std;
+    document.querySelector('.ext-sel[data-side='+side+']').value = s.ext;
+    document.querySelector('.extdev-sel[data-side='+side+']').value = s.extDev;
+    document.querySelector('.variant-sel[data-side='+side+']').value = s.variant;
+    document.querySelector('.useled-chk[data-side='+side+']').checked = s.useLed;
+  }
+
+  // tier バッジ
+  const tier = document.getElementById('tier');
+  if (model.missing.size)
+    tier.innerHTML = '<span class="tierbadge tier-FW">FW未実装に依存（ビルド不可）</span>';
+  else
+    tier.innerHTML = '<span class="tierbadge tier-BN">BUILDABLE-NOW（今すぐ焼ける）</span>';
+
+  // messages
+  const mc=document.getElementById('msgs'); mc.innerHTML='';
+  for (const m of validate(model)){
+    const d=document.createElement('div'); d.className='msg '+m.k; d.textContent=m.t; mc.appendChild(d);
+  }
+
+  // outputs
+  document.getElementById('out_build').textContent = genBuildYaml(model);
+  document.getElementById('out_conf').textContent  = genConf(model);
+  document.getElementById('out_west').textContent  = genWest(model);
+  document.getElementById('conf_path').textContent = `boards/shields/torabo_tsuki_lp/${SHIELD(central)}.conf（追記）`;
+
+  // 状態を保存（リロード復元用）
+  saveState();
+}
+
+// ===================================================================
+// イベント結線
+// ===================================================================
+document.getElementById('central').addEventListener('change', e=>{ state.central=e.target.value; render(); });
+document.getElementById('kbname').addEventListener('input', e=>{ state.keyboardName=e.target.value; render(); });
+const bindF=(id,key)=>document.getElementById(id).addEventListener('change', e=>{ state.features[key]=e.target.checked; render(); });
+bindF('f_trackball','trackball'); bindF('f_macros','macros'); bindF('f_combos','combos'); bindF('f_layers','layers'); bindF('f_trackpadlive','trackpadlive'); bindF('f_livefeed','liveFeed');
+document.getElementById('f_layers_n').addEventListener('input', e=>{ state.features.layersN=parseInt(e.target.value||'0',10); render(); });
+
+document.querySelectorAll('.std-sel').forEach(s=>s.addEventListener('change', e=>{ state.sides[e.target.dataset.side].std=e.target.value; render(); }));
+document.querySelectorAll('.ext-sel').forEach(s=>s.addEventListener('change', e=>{
+  const side=e.target.dataset.side; state.sides[side].ext=e.target.value;
+  if (e.target.value==='none') state.sides[side].extDev='none'; // 拡張基盤なし → デバイスもクリア
+  render();
+}));
+document.querySelectorAll('.extdev-sel').forEach(s=>s.addEventListener('change', e=>{ state.sides[e.target.dataset.side].extDev=e.target.value; render(); }));
+document.querySelectorAll('.variant-sel').forEach(s=>s.addEventListener('change', e=>{ state.sides[e.target.dataset.side].variant=e.target.value; render(); }));
+document.querySelectorAll('.useled-chk').forEach(c=>c.addEventListener('change', e=>{ state.sides[e.target.dataset.side].useLed=e.target.checked; render(); }));
+document.querySelectorAll('.ledmode-sel').forEach(s=>s.addEventListener('change', e=>{ state.sides[e.target.dataset.side].ledMode=e.target.value; render(); }));
+
+document.querySelectorAll('button.copy').forEach(b=>b.addEventListener('click', ()=>{
+  const txt=document.getElementById(b.dataset.target).textContent;
+  navigator.clipboard.writeText(txt).then(()=>{ const o=b.textContent; b.textContent='コピー済'; setTimeout(()=>b.textContent=o,1200); });
+}));
+
+loadState();
+syncStaticControls();
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+name: torabo-encoder-btn-local
+append:
+  EXTRA_DTC_OVERLAY_FILE: torabo-encoder-btn-local.overlay
+  EXTRA_CONF_FILE: torabo-encoder-btn-local.conf

@@ -1,0 +1,20 @@
+/*
+ * torabo-trackball snippet — replaces the keyboard body's stock per-layer
+ * trackball listener children (scroll_vertical / scroll_horizontal / mouse_mode)
+ * with the runtime-configurable, fail-open ztc_pointer + ztc_temp_layer as the
+ * listener BASE processors. Lets the upstream keyboard body stay UNMODIFIED:
+ * the user just adds `-S torabo-trackball` at build time.
+ *
+ * ztc_temp_layer's <1 500> are devicetree fallbacks (target layer / timeout ms)
+ * used only until the BLE/NVS store overrides them.
+ */
+
+#include "../../dts/input/ztc.dtsi"
+
+&pointing_listener {
+    /delete-node/ scroll_vertical;
+    /delete-node/ scroll_horizontal;
+    /delete-node/ mouse_mode;
+
+    input-processors = <&ztc_pointer>, <&ztc_temp_layer 1 500>;
+};

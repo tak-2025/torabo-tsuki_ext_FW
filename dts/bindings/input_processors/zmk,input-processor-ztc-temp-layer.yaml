@@ -1,0 +1,23 @@
+# Copyright (c) 2024 The ZMK Contributors (base) / 2026 tak-2025
+# SPDX-License-Identifier: MIT
+
+description: |
+  Verbatim copy of zmk,input-processor-temp-layer with target+timeout sourced
+  from the runtime ztc store (param1/param2 are DT fallbacks). Replaces the stock
+  zip_temp_layer so it is the single owner of temp-layer state.
+
+compatible: "zmk,input-processor-ztc-temp-layer"
+
+include: ip_two_param.yaml
+
+properties:
+  require-prior-idle-ms:
+    type: int
+    required: false
+    default: 0
+    description: Time in ms after the last keystroke before the layer can be toggled
+  excluded-positions:
+    type: array
+    required: false
+    default: []
+    description: Key positions that will NOT trigger layer deactivation when pressed

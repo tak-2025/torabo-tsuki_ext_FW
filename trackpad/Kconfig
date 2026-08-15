@@ -1,0 +1,73 @@
+menuconfig ZMK_TRACKPAD_CONFIG
+    bool "Runtime-configurable trackpad settings (torabo-tsuki)"
+    help
+      Per-layer, per-device trackpad behavior (move / scroll / off + the discrete
+      encoder roles volume / brightness / zoom / browser + direction + step)
+      editable at runtime over BLE. Milestone 1 provides the fail-open store and
+      its BLE settings window only; the fixed torabo-trackpad overlay still drives
+      behavior until the tp_pointer/tp_encoder input path is wired (milestone 2).
+      Default n; enable per build target.
+
+if ZMK_TRACKPAD_CONFIG
+
+config ZMK_TRACKPAD_CONFIG_BLE
+    bool "Expose trackpad settings over a BLE GATT service"
+    depends on BT
+    default y
+    help
+      Custom encrypted GATT service (e1f4ac00) to read/write the settings live.
+      The v2 wire can exceed one ATT MTU, so enable CONFIG_BT_ATT_PREPARE_COUNT
+      (>0) in the build so the GATT window can reassemble a Write Long.
+
+config ZMK_TRACKPAD_CONFIG_DEV0_META
+    int "Device 0 identity metadata byte"
+    default 0
+    range 0 255
+    help
+      Identity of wire device 0 (the pointing device the peripheral exports over
+      split), encoded as TP_META(side, conn, kind) — see config.h. The app renders
+      its label from this instead of guessing from the device id, so the same app
+      works for every hardware pattern (central on either half, pad on the board's
+      own FFC or on the extender, etc).
+
+      The firmware builder emits this per configuration. Leave 0 (unknown) to have
+      the app fall back to a generic "device 0" label.
+
+config ZMK_TRACKPAD_CONFIG_DEV1_META
+    int "Device 1 identity metadata byte"
+    default 0
+    range 0 255
+    help
+      Identity of wire device 1 (the central's extender pad). See DEV0_META.
+
+config ZMK_TRACKPAD_CONFIG_DEV2_META
+    int "Device 2 identity metadata byte"
+    default 0
+    range 0 255
+    help
+      Identity of wire device 2, if a build ever exposes a third device. See
+      DEV0_META.
+
+config ZMK_TRACKPAD_CONFIG_DEV3_META
+    int "Device 3 identity metadata byte"
+    default 0
+    range 0 255
+    help
+      Identity of wire device 3, if a build ever exposes a fourth device. See
+      DEV0_META.
+
+config ZMK_TRACKPAD_CONFIG_DTAP_WINDOW_MS
+    int "Double-tap detection window (ms) for tp_keys gestures"
+    default 250
+    range 0 1000
+    help
+      Time window used by the tp_keys gesture processor (DESIGN-trackpad-v2.md
+      §4.4) to detect a double tap. A single tap is deferred by this window ONLY
+      when a double-tap binding is assigned for the active layer/device, so the
+      added latency applies only when double-tap is actually configured.
+
+module = ZMK_TRACKPAD_CONFIG
+module-str = ZMK Trackpad Config
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # ZMK_TRACKPAD_CONFIG

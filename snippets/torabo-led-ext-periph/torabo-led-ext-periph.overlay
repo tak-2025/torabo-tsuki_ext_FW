@@ -1,0 +1,40 @@
+/*
+ * torabo-led-ext-periph — extender LED on the PERIPHERAL half.
+ *
+ * Same wiring as the central's (identical board design), plus the receiver
+ * behavior the central invokes over the split.
+ *
+ * The node name `led_ext` MUST stay short: the split payload carries the
+ * behavior's device name in a char[16] and silently truncates a longer one, after
+ * which it never resolves here and the LED just stays dark.
+ *
+ * The anode rides the ext pad's POW rail (P0.24), so this needs the peripheral's
+ * ext pad snippet to power it.
+ */
+
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/ {
+    torabo_led_ext {
+        compatible = "gpio-leds";
+        ledx_red: ledx_red {
+            gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;
+            label = "Extender LED red";
+        };
+        ledx_yg: ledx_yg {
+            gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;
+            label = "Extender LED yellow-green";
+        };
+        ledx_grn: ledx_grn {
+            gpios = <&gpio1 2 GPIO_ACTIVE_LOW>;
+            label = "Extender LED green";
+        };
+    };
+
+    behaviors {
+        led_ext: led_ext {
+            compatible = "torabo,behavior-led-ext";
+            #binding-cells = <0>;
+        };
+    };
+};

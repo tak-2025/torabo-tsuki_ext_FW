@@ -1,0 +1,39 @@
+/*
+ * torabo-trackpad-live-split — v2, OTHER-SIDE pad over split (device 0, e.g. the
+ * left mini pad on the peripheral). Replaces the fixed per-layer children of
+ * pointing_device_split_listener with the runtime, store-driven tp_pointer (axis
+ * path) + tp_keys (tap/gesture path) as the listener BASE processors.
+ *
+ * Use AFTER input-split-listener (which defines pointing_device_split_listener):
+ *   -S "... input-split-listener ... torabo-trackpad-live-split ..."
+ *
+ * `behaviors` are the runtime binding-synthesis references (binding.h), in the
+ * fixed order <&none>, <&kp>, <&mo>, <&to>, <&tog>; the app assigns any keycode/
+ * consumer/layer per axis-swipe and per gesture. zip_temp_layer keeps
+ * auto-mouse-layer on move. tp_pointer sees REL only, tp_keys KEY only.
+ */
+
+#include <input/processors.dtsi>
+#include <dt-bindings/zmk/keys.h>
+
+/ {
+    tp_pointer_left: tp_pointer_left {
+        compatible = "zmk,input-processor-tp-pointer";
+        #input-processor-cells = <0>;
+        device-id = <0>;
+        behaviors = <&none>, <&kp 0>, <&mo 0>, <&to 0>, <&tog 0>;
+    };
+    tp_keys_left: tp_keys_left {
+        compatible = "zmk,input-processor-tp-keys";
+        #input-processor-cells = <0>;
+        device-id = <0>;
+        behaviors = <&none>, <&kp 0>, <&mo 0>, <&to 0>, <&tog 0>;
+    };
+};
+
+&pointing_device_split_listener {
+    /delete-node/ scroll_vertical;
+    /delete-node/ scroll_horizontal;
+    /delete-node/ mouse_mode;
+    input-processors = <&tp_pointer_left>, <&tp_keys_left>, <&zip_temp_layer 1 500>;
+};

@@ -1,0 +1,42 @@
+/*
+ * torabo-encoder-btn-split-ext — encoder push button on the PERIPHERAL half (extender FFC).
+ *
+ * The button is a bare GPIO, not a matrix key, so it needs no transform, no
+ * physical-layout entry and no keymap binding. Zephyr's gpio-keys driver turns it
+ * into an INPUT_EV_KEY event, and `zmk,input-split` relays that to the central —
+ * the same road the left trackpad's taps already travel. The central then decides
+ * what the click does (torabo-encoder-btn-recv + the runtime store).
+ *
+ * Pins (see PLAN-encoder-extender.md): extender FFC button = P0.31.
+ * For an encoder on the extender FFC use torabo-encoder-btn-split (P0.20).
+ *
+ * Split slot: reg = <2>. Pointing devices take 0 (and 1 when a half carries two),
+ * so 2 is always free for the button.
+ *
+ * Apply to the PERIPHERAL, pair with torabo-encoder-btn-recv on the central.
+ */
+
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/ {
+    enc_btn_keys: enc_btn_keys {
+        compatible = "gpio-keys";
+
+        enc_btn: enc_btn {
+            /* active low + pull-up: the switch shorts to GND when pressed */
+            gpios = <&gpio0 31 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            zephyr,code = <INPUT_BTN_0>;
+        };
+    };
+
+    split_inputs {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        enc_btn_split: enc_btn_split@2 {
+            compatible = "zmk,input-split";
+            reg = <2>;
+            device = <&enc_btn_keys>;
+        };
+    };
+};

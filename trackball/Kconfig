@@ -1,0 +1,60 @@
+menuconfig ZMK_TRACKBALL_CONFIG
+    bool "Runtime-configurable trackball settings (torabo-tsuki)"
+    help
+      Per-layer, per-axis trackball behavior (move / scroll / off + direction +
+      speed) and temp-layer (timeout/target) editable at runtime over BLE, with a
+      fail-open input processor so movement never stops on bad/empty config.
+      Default n; enable per build target.
+
+if ZMK_TRACKBALL_CONFIG
+
+config ZMK_TRACKBALL_CONFIG_BLE
+    bool "Expose trackball settings over a BLE GATT service"
+    depends on BT
+    default y
+    help
+      Custom encrypted GATT service to read/write the settings live.
+
+# Auto-enabled when a matching devicetree node is instantiated (single source of
+# truth: the build overlay). Gates compilation so an unused processor is dropped.
+config ZTC_POINTER
+    bool
+    default y
+    depends on DT_HAS_ZMK_INPUT_PROCESSOR_ZTC_POINTER_ENABLED
+
+config ZTC_TEMP_LAYER
+    bool
+    default y
+    depends on DT_HAS_ZMK_INPUT_PROCESSOR_ZTC_TEMP_LAYER_ENABLED
+
+config ZTC_TEMP_LAYER_MAX_ACTION_EVENTS
+    int "Max queued temp-layer activate/deactivate actions"
+    default 16
+    depends on ZTC_TEMP_LAYER
+    help
+      Generous so a deactivate action can never be dropped on a full queue
+      (which would latch a layer on). Activations are ~once per gesture.
+
+config ZTC_PROFILE_LED_INDICATOR
+    bool "Blink the status LED (index+1) on BLE profile change"
+    default y
+    depends on ZMK_BLE
+    help
+      On a BLE profile change (BT_SEL/BT_NXT/BT_PRV), blink the gpio status_led
+      (profile index + 1) times so the active profile is visible: profile 0 = 1
+      blink ... profile 4 = 5 blinks. Requires a `status_led` devicetree node
+      (present on torabo-tsuki). Central-only; harmless if no node exists.
+
+module = ZMK_TRACKBALL_CONFIG
+module-str = ZMK Trackball Config
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # ZMK_TRACKBALL_CONFIG
+
+# Encoder input processor: self-contained (no runtime store / GATT), so the
+# torabo-trackpad snippet can use it WITHOUT enabling the trackball config module.
+# Auto-enabled when a ztc-encoder devicetree node is instantiated by a build overlay.
+config ZTC_ENCODER
+    bool
+    default y
+    depends on DT_HAS_ZMK_INPUT_PROCESSOR_ZTC_ENCODER_ENABLED

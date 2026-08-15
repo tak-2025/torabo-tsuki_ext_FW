@@ -1,0 +1,11 @@
+# Copyright (c) 2026 tak-2025
+# SPDX-License-Identifier: MIT
+
+description: |
+  Marker node that activates the dynamic (NVS-backed, live-editable) combo
+  engine. A singleton; it has no properties. Its presence is what makes
+  combo_engine.c compile (DT_HAS_COMPAT_STATUS_OKAY). Do NOT also add a
+  "zmk,combos" node — the dynamic engine is the single owner of the combo
+  position listener.
+
+compatible: "zmk,dynamic-combos"

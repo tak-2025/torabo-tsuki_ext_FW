@@ -1,0 +1,36 @@
+description: |
+  Rotary encoder rotation router (torabo-tsuki).
+
+  A ZMK sensor behavior whose clockwise / counter-clockwise actions are NOT fixed
+  in devicetree: it resolves them from the runtime encoder store for the layer the
+  event arrived on, so they can be edited live from the app. The keymap therefore
+  holds a single immutable entry:
+
+      sensor-bindings = <&enc_cfg>;
+
+  Unassigned on a layer => transparent, so a lower layer can act.
+
+compatible: "torabo,behavior-encoder-config"
+
+properties:
+  "#sensor-binding-cells":
+    type: int
+    required: true
+    const: 0
+  behaviors:
+    type: phandle-array
+    # ZMK behaviors expose #binding-cells, not #behavior-cells. Without this,
+    # devicetree looks for #behavior-cells and every reference (starting with
+    # &none) fails with "lacks #behavior-cells".
+    specifier-space: binding
+    required: true
+    description: |
+      Runtime binding-synthesis references, in this fixed order (binding.h):
+      <&none>, <&kp 0>, <&mo 0>, <&to 0>, <&tog 0>. &kp doubles for both KP and
+      CP (a consumer usage is &kp with the consumer usage page).
+  tap-ms:
+    type: int
+    default: 5
+    description: press-to-release gap for one detent, as in ZMK's own rotate behavior.
+
+sensor-binding-cells: []

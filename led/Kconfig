@@ -1,0 +1,54 @@
+menuconfig ZMK_LED_CONFIG
+    bool "Runtime-configurable extender LED (torabo-tsuki)"
+    help
+      Per-side rule table for the 3-colour extender LED — "when X happens, show
+      colour C with pattern P" — editable live over BLE from Torabo-Studio.
+
+      Supersedes TORABO_STATUS_LED_EXT, whose two behaviours (BLE profile flash,
+      steady red while the other half is gone) are hardcoded and central-only.
+      Do not enable both: they would fight over the same GPIOs.
+
+      The central holds the whole table, decides what BOTH LEDs show, drives its
+      own and pushes the peripheral's over the split — so the peripheral needs no
+      config and nothing to sync. The one thing it decides for itself is what to
+      show when the link is down, since the central cannot reach it then.
+
+      Default n; enable per build target (see the torabo-led-live snippet).
+
+if ZMK_LED_CONFIG
+
+config ZMK_LED_CONFIG_BLE
+    bool "Expose the LED rules over a BLE GATT service"
+    depends on BT
+    default y
+    help
+      Encrypted GATT service e1f4ae00 to read/write the rule table live. 72 B, so
+      it fits in a single ATT write and needs no Write Long.
+
+config ZMK_LED_CONFIG_LEFT_PRESENT
+    bool "An LED exists on the left half"
+    default n
+    help
+      Advertised to the app in the wire's capability byte, so it shows only the
+      sides this keyboard actually has instead of assuming a layout. The LED's
+      anode rides the extender pad's power rail, so this should only be y when the
+      left half has an extender pad. The firmware builder sets it.
+
+config ZMK_LED_CONFIG_RIGHT_PRESENT
+    bool "An LED exists on the right half"
+    default n
+    help
+      See LEFT_PRESENT.
+
+config ZMK_LED_CONFIG_CENTRAL_IS_LEFT
+    bool "The central half is the left one"
+    default n
+    help
+      Tells the rule engine which array slot is local and which is reached over
+      the split, and is advertised to the app. The firmware builder sets it.
+
+module = ZMK_LED_CONFIG
+module-str = ZMK LED Config
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # ZMK_LED_CONFIG

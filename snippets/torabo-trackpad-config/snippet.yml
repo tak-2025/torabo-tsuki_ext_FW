@@ -1,0 +1,3 @@
+name: torabo-trackpad-config
+append:
+  EXTRA_CONF_FILE: torabo-trackpad-config.conf

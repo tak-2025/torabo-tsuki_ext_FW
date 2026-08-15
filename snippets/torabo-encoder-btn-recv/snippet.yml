@@ -1,0 +1,3 @@
+name: torabo-encoder-btn-recv
+append:
+  EXTRA_DTC_OVERLAY_FILE: torabo-encoder-btn-recv.overlay

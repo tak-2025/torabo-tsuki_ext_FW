@@ -1,0 +1,35 @@
+/*
+ * torabo-encoder-live — make the encoder's ROTATION runtime-configurable.
+ *
+ * Replaces the static `sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>` that
+ * input-encoder installs with a single router behavior. What the knob does per
+ * layer then comes from the runtime store, editable live in Torabo-Studio.
+ *
+ * Apply to the CENTRAL, AFTER input-encoder / input-encoder-recv:
+ *   -S "... input-encoder-recv torabo-encoder-live ..."
+ *
+ * The push button is a separate concern (it is an input event, not a sensor one):
+ * see torabo-encoder-btn-* .
+ *
+ * `behaviors` are the runtime binding-synthesis references (binding.h), in the
+ * fixed order <&none>, <&kp>, <&mo>, <&to>, <&tog>; the app can then assign any
+ * keycode, consumer usage or layer without a compile-time palette.
+ */
+
+/ {
+    behaviors {
+        enc_cfg: enc_cfg {
+            compatible = "torabo,behavior-encoder-config";
+            #sensor-binding-cells = <0>;
+            behaviors = <&none>, <&kp 0>, <&mo 0>, <&to 0>, <&tog 0>;
+        };
+    };
+};
+
+/* One immutable keymap entry; the action itself lives in the store.
+ * (Overrides the static default from input-encoder — later overlay wins.) */
+/* Path reference, not &layer_0: the keymap declares the layer as a node NAME,
+ * not a label, so there is nothing for &layer_0 to resolve to. */
+&{/keymap/layer_0} {
+    sensor-bindings = <&enc_cfg>;
+};

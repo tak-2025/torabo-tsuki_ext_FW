@@ -1,0 +1,4 @@
+name: torabo-trackball
+append:
+  EXTRA_DTC_OVERLAY_FILE: torabo-trackball.overlay
+  EXTRA_CONF_FILE: torabo-trackball.conf

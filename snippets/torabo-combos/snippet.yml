@@ -1,0 +1,4 @@
+name: torabo-combos
+append:
+  EXTRA_DTC_OVERLAY_FILE: torabo-combos.overlay
+  EXTRA_CONF_FILE: torabo-combos.conf

@@ -1,0 +1,30 @@
+menuconfig ZMK_DYNAMIC_COMBOS
+    bool "Dynamic (NVS-backed, live-editable) combos for torabo-tsuki"
+    help
+      Runtime-editable combos: a set of key positions pressed together fires one
+      behavior (key press / layer / dynamic macro). Definitions live in NVS and
+      are edited live over BLE, so changing a combo never needs a reflash.
+
+      This replaces the upstream (devicetree-const) combo engine with a literal
+      copy whose definition array is RAM-backed. It is the SINGLE owner of the
+      position-combo listener: do NOT also instantiate a "zmk,combos" node
+      (the upstream combo.c stays inert when that node is absent). Fail-safe:
+      empty/invalid/disabled combos never capture a key, so normal typing is
+      unaffected.
+
+if ZMK_DYNAMIC_COMBOS
+
+config ZMK_DYNAMIC_COMBOS_BLE
+    bool "Expose dynamic-combo config over a BLE GATT service"
+    depends on BT
+    default y
+    help
+      Custom encrypted GATT service: READ returns all combo slots (Read Blob),
+      WRITE updates one combo at a time (small enough to fit a single ATT write,
+      so no long-write is needed).
+
+module = ZMK_DYNAMIC_COMBOS
+module-str = ZMK Dynamic Combos
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # ZMK_DYNAMIC_COMBOS

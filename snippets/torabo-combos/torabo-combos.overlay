@@ -1,0 +1,16 @@
+/*
+ * torabo-combos snippet — instantiates the singleton marker node that turns on
+ * the dynamic-combo engine. The user writes NO combo nodes in their keymap;
+ * combos are defined entirely live over BLE and stored in NVS.
+ *
+ * IMPORTANT: do not also keep a `combos { compatible = "zmk,combos"; ... }`
+ * node in your keymap. The dynamic engine is the single owner of the combo
+ * position listener; running both would double-process key positions.
+ */
+
+/ {
+    dyn_combos: dynamic_combos {
+        compatible = "zmk,dynamic-combos";
+        status = "okay";
+    };
+};

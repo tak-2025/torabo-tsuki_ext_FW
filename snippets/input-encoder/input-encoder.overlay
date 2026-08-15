@@ -1,0 +1,40 @@
+#include <dt-bindings/zmk/keys.h>
+
+/*
+ * 標準FFC のロータリーエンコーダ（EC11・A/B相のみ。ボタンは別スニペット encoder-button）。
+ * このスニペットを「物理的にエンコーダが載っている側」のビルドに適用する。
+ *   central 側に載る場合  : これ単体でローカル動作（keymap の sensor-bindings で割当）。
+ *   peripheral 側に載る場合: これ＋相手(central)に input-encoder-recv を併用（ZMK 分割センサー中継）。
+ *
+ * ピン: A=P0.18 / B=P0.16（標準FFC。トラックボール/ミニパッドと排他＝同じピンを使う）。
+ * 参照: ZMK 公式テスト app/tests/ble/split/peripheral-encoder/ と sofle の構成に準拠。
+ */
+
+/ {
+    standard_encoder: encoder_standard {
+        compatible = "alps,ec11";
+        a-gpios = <&gpio0 18 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        b-gpios = <&gpio0 16 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        steps = <80>;
+        status = "okay";
+    };
+
+    sensors: sensors {
+        compatible = "zmk,keymap-sensors";
+        sensors = <&standard_encoder>;
+        triggers-per-rotation = <20>;
+        status = "okay";
+    };
+};
+
+/*
+ * 静的な既定割当（ベースライン）: 回転で音量 ±。
+ * sensor-bindings は cascade する（上位レイヤーに無ければ下位に落ちる）ので、
+ * layer_0 に置けば全レイヤーの既定になり、必要な層だけ keymap で上書きできる。
+ * エンコーダ1個の前提（sensors LEN=1 → binding 1個）。ライブ設定導入後はこの静的既定を外す。
+ */
+/* Path reference, not &layer_0: the keymap declares the layer as a node NAME,
+ * not a label, so there is nothing for &layer_0 to resolve to. */
+&{/keymap/layer_0} {
+    sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
+};

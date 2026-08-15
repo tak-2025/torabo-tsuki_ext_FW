@@ -1,0 +1,6 @@
+# Normalize line endings on commit so CRLF never sneaks into devicetree /
+# Kconfig / shell files (CRLF in build-test.sh would break it on Linux/Docker).
+* text=auto eol=lf
+
+# Shell scripts must stay LF.
+*.sh text eol=lf

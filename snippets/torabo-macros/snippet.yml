@@ -1,0 +1,4 @@
+name: torabo-macros
+append:
+  EXTRA_DTC_OVERLAY_FILE: torabo-macros.overlay
+  EXTRA_CONF_FILE: torabo-macros.conf

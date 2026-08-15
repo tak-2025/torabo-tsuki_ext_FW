@@ -1,0 +1,11 @@
+# Copyright (c) 2026 tak-2025
+# SPDX-License-Identifier: MIT
+
+description: |
+  Configurable per-axis pointing processor (torabo-tsuki). Wired as the input
+  listener BASE processor; applies runtime per-layer per-axis role/direction/speed
+  from the ztc store, always fail-open to plain move. Takes no cells.
+
+compatible: "zmk,input-processor-ztc-pointer"
+
+include: ip_zero_param.yaml

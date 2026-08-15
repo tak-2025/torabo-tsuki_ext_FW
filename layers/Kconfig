@@ -1,0 +1,22 @@
+config TORABO_RESERVED_LAYERS
+	int "Number of reserved (runtime-claimable) keymap layers, as advertised to the app"
+	default 0
+	range 0 10
+	help
+	  How many empty status="reserved" layers this build has, so torabo-caps can
+	  advertise the count to the app. 0 = none.
+
+	  ⚠ This does NOT create the layers. Zephyr processes devicetree before
+	  Kconfig and does not pass autoconf.h to the DTS preprocessor, so CONFIG_*
+	  is always undefined inside an overlay. The torabo-reserved-layers snippet
+	  therefore takes its count from the TORABO_RESERVED_LAYERS *preprocessor*
+	  macro (default 10), set from build.yaml:
+
+	      cmake-args: -DDTS_EXTRA_CPPFLAGS="-DTORABO_RESERVED_LAYERS=6"
+
+	  Keep this Kconfig value equal to that number (the firmware-builder emits
+	  both together).
+
+	  Assumes the torabo-tsuki 66-key layout (rows 12/12/14/14/14). Do NOT also
+	  declare reserved layers in your keymap.keymap when using this snippet (the
+	  counts would stack).

@@ -1,0 +1,36 @@
+/*
+ * torabo-encoder-btn-recv — CENTRAL receiver for a peripheral encoder button.
+ *
+ * Takes the button's key event off the split channel (slot 2, matching
+ * torabo-encoder-btn-split) and hands it to the enc-button processor, which looks
+ * up what the current layer's click should do in the runtime store and fires it.
+ * Behaviors must be invoked here: only the central talks to the host.
+ *
+ * Apply to the CENTRAL together with torabo-encoder-live (which brings the store).
+ */
+
+/ {
+    split_inputs {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        enc_btn_split: enc_btn_split@2 {
+            compatible = "zmk,input-split";
+            reg = <2>;
+        };
+    };
+
+    enc_button: enc_button {
+        compatible = "torabo,input-processor-enc-button";
+        #input-processor-cells = <0>;
+        code = <0x100>; /* INPUT_BTN_0 — must match the gpio-keys zephyr,code */
+        behaviors = <&none>, <&kp 0>, <&mo 0>, <&to 0>, <&tog 0>;
+    };
+
+    enc_btn_listener: enc_btn_listener {
+        compatible = "zmk,input-listener";
+        device = <&enc_btn_split>;
+        status = "okay";
+        input-processors = <&enc_button>;
+    };
+};

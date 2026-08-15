@@ -1,0 +1,68 @@
+/*
+ * peripheral 側の拡張FPCトラックパッド — split エクスポート（**reg=1**）。
+ *
+ * `input-trackpad-ext-split`（reg=0）の双子。peripheral 側に pointing デバイスが2個ある
+ * 構成（標準FFC=ボール/パッド ＋ 拡張FFC=パッド）で使う:
+ *   標準FFC の pointing → `input-split`（reg=0）      → central は `input-split-listener`
+ *   拡張FFC のパッド    → これ（reg=1）               → central は `input-split-listener-reg1`
+ *
+ * ※ エンコーダは sensor 経路で reg 枠を消費しないので、標準FFC=エンコーダなら拡張パッドは
+ *    reg=0 のまま＝`input-trackpad-ext-split`（reg=0 版）を使うこと。こちらは不要。
+ *
+ * 配線は reg=0 版と同一: SDA=P0.17 SCL=P0.21 RDY=P0.31 POW=P0.24 ／ i2c1(TWIM1)
+ * ⚠ POW=P0.24 は共有レール。FFC の電極面の向きを誤ると I2C ごとショートする。
+ *
+ * DIY パッドは `input-trackpad-ext-diy` を後段に重ねて init を差し替える。
+ */
+
+&pinctrl {
+    i2c1_default: i2c1_default {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SDA, 0, 17)>,
+                    <NRF_PSEL(TWIM_SCL, 0, 21)>;
+            bias-pull-up;
+        };
+    };
+
+    i2c1_sleep: i2c1_sleep {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SDA, 0, 17)>,
+                    <NRF_PSEL(TWIM_SCL, 0, 21)>;
+            bias-pull-up;
+            low-power-enable;
+        };
+    };
+};
+
+&i2c1 {
+    status = "okay";
+    compatible = "nordic,nrf-twim";
+    pinctrl-0 = <&i2c1_default>;
+    pinctrl-1 = <&i2c1_sleep>;
+    pinctrl-names = "default", "sleep";
+    clock-frequency = <I2C_BITRATE_FAST>;
+    zephyr,concat-buf-size = <32>;
+
+    pointing_device_ext: pointing_device_ext@56 {
+        status = "okay";
+        compatible = "azoteq,iqs7211e";
+        reg = <0x56>;
+        irq-gpios = <&gpio0 31 (GPIO_PULL_UP)>;
+        power-gpios = <&gpio0 24 (GPIO_ACTIVE_HIGH | NRF_GPIO_DRIVE_H1)>;
+        init-symbol = "mini_trackpad_iqs7211e_init";
+        init-length = <217>;
+    };
+};
+
+/ {
+    split_inputs {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        pointing_device_split_1: pointing_device_split@1 {
+            compatible = "zmk,input-split";
+            reg = <1>;
+            device = <&pointing_device_ext>;
+        };
+    };
+};

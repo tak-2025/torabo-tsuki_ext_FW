@@ -1,0 +1,4 @@
+name: input-encoder-ext
+append:
+  EXTRA_DTC_OVERLAY_FILE: input-encoder-ext.overlay
+  EXTRA_CONF_FILE: input-encoder-ext.conf

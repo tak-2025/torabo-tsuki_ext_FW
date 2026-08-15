@@ -1,0 +1,41 @@
+#include <dt-bindings/zmk/keys.h>
+
+/*
+ * central 受け口: 相手(peripheral)側に載った標準FFCエンコーダの分割センサーを受ける。
+ * デバイスは status=disabled（central では物理エンコーダを動かさない。P0.18/16 は central では
+ * トラックボール等が使う）。sensors ノードだけ okay にして keymap-sensors の LEN と sensor_index を
+ * central 側に確保する（ZMK: sensors.h の ZMK_KEYMAP_SENSORS_LEN / keymap.c の sensor_index 参照）。
+ *
+ * 物理側の input-encoder とノード名(standard_encoder / sensors)・並びを一致させること。
+ * keymap（central）に sensor-bindings = <&inc_dec_kp ...> を層ごとに追加して割当てる。
+ * 相手側に載る場合のみ使用（エンコーダが central 自身に載るなら不要）。
+ */
+
+/ {
+    standard_encoder: encoder_standard {
+        compatible = "alps,ec11";
+        a-gpios = <&gpio0 18 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        b-gpios = <&gpio0 16 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        steps = <80>;
+        status = "disabled";
+    };
+
+    sensors: sensors {
+        compatible = "zmk,keymap-sensors";
+        sensors = <&standard_encoder>;
+        triggers-per-rotation = <20>;
+        status = "okay";
+    };
+};
+
+/*
+ * 静的な既定割当（ベースライン・central 側で適用）: 回転で音量 ±。
+ * keymap を持つのは central なので、割当の実体はこちら側に置く。
+ * sensor-bindings は cascade するため layer_0 のみで全レイヤー既定になる。
+ * 物理側 input-encoder と同じ既定に揃えてある。ライブ設定導入後は外す。
+ */
+/* Path reference, not &layer_0: the keymap declares the layer as a node NAME,
+ * not a label, so there is nothing for &layer_0 to resolve to. */
+&{/keymap/layer_0} {
+    sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
+};

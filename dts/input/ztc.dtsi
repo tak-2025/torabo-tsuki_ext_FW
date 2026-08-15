@@ -1,0 +1,23 @@
+/*
+ * Copyright (c) 2026 tak-2025
+ * SPDX-License-Identifier: MIT
+ *
+ * Reusable instances. Reference both from the input-listener BASE processor list
+ * (NOT layer-override children) so ztc_pointer runs on every event (fail-open):
+ *   &pointing_listener { input-processors = <&ztc_pointer>, <&ztc_temp_layer 1 500>; };
+ * ztc_temp_layer's <1 500> are DT fallbacks (target/timeout) used only when the
+ * RAM store is unset. /omit-if-no-ref/ => nodes (and their drivers) exist only
+ * when actually referenced.
+ */
+
+/ {
+    /omit-if-no-ref/ ztc_pointer: ztc_pointer {
+        compatible = "zmk,input-processor-ztc-pointer";
+        #input-processor-cells = <0>;
+    };
+
+    /omit-if-no-ref/ ztc_temp_layer: ztc_temp_layer {
+        compatible = "zmk,input-processor-ztc-temp-layer";
+        #input-processor-cells = <2>;
+    };
+};

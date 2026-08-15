@@ -1,0 +1,28 @@
+# Copyright (c) 2026 tak-2025
+# SPDX-License-Identifier: MIT
+
+description: |
+  Encoder-style input processor (torabo-tsuki). Accumulates one relative axis and
+  taps a behavior every `threshold` units: bindings[0] for the +direction,
+  bindings[1] for the -direction. Consumes the matched axis so it does not also
+  move the cursor. Assigned per layer via the listener's per-layer children.
+
+compatible: "zmk,input-processor-ztc-encoder"
+
+include: ip_zero_param.yaml
+
+properties:
+  type:
+    type: int
+    description: input event type to match (default INPUT_EV_REL).
+  code:
+    type: int
+    required: true
+    description: relative axis code to accumulate (e.g. INPUT_REL_Y).
+  threshold:
+    type: int
+    description: units of motion per tap (bigger = coarser; default 8).
+  bindings:
+    type: phandle-array
+    required: true
+    description: exactly two behaviors <positive>, <negative>.

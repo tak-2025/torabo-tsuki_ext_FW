@@ -1,0 +1,20 @@
+/*
+ * DIY (self-made, 00ref/v2) extender trackpad — THIN overlay.
+ *
+ * Apply ON TOP OF the official `input-trackpad-ext` snippet:
+ *   -S "... input-trackpad-ext input-trackpad-ext-diy"   (diy AFTER official)
+ *
+ * The self-made pad uses the SAME IQS7211E driver and wiring (i2c1, @0x56,
+ * SDA=P0.17 / SCL=P0.21 / RDY=P0.31 / POW=P0.24) as the official one, so this
+ * overlay does NOT redefine i2c1 / the device node / the listener. It only
+ * overrides the init blob, which is where the self-made Rx/Tx geometry differs.
+ *
+ * TODO: replace init-symbol/init-length with the DIY-specific IQS7211E init once
+ * generated with the Azoteq tool for the 00ref/v2 pad. Until then it points at
+ * the official init (`mini_trackpad_iqs7211e_init`) => no behavioral change yet.
+ */
+
+&pointing_device_ext {
+    init-symbol = "mini_trackpad_iqs7211e_init";
+    init-length = <217>;
+};

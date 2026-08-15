@@ -1,0 +1,4 @@
+name: torabo-led-live
+append:
+  EXTRA_DTC_OVERLAY_FILE: torabo-led-live.overlay
+  EXTRA_CONF_FILE: torabo-led-live.conf
