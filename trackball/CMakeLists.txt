@@ -15,6 +15,9 @@ if(CONFIG_ZMK_TRACKBALL_CONFIG OR CONFIG_ZTC_ENCODER)
         zephyr_library_sources(src/gatt_service.c)
     endif()
 
+    # Studio RPC (USB/BLE) settings window, same wire blob as the GATT one.
+    zephyr_library_sources_ifdef(CONFIG_ZMK_TRACKBALL_CONFIG_TUNNEL src/tunnel_bridge.c)
+
     # Encoder: self-contained (no store / GATT), used by the torabo-trackpad snippet.
     zephyr_library_sources_ifdef(CONFIG_ZTC_ENCODER src/ztc_encoder.c)
 endif()

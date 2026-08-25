@@ -15,6 +15,15 @@ config ZMK_TRACKBALL_CONFIG_BLE
     help
       Custom encrypted GATT service to read/write the settings live.
 
+config ZMK_TRACKBALL_CONFIG_TUNNEL
+    bool "Expose trackball settings over the Studio RPC torabo tunnel"
+    depends on ZMK_STUDIO_TORABO_TUNNEL
+    default y
+    help
+      Register the settings with the torabo tunnel so they are reachable over
+      whichever transport Studio RPC is using (USB serial included). Carries the
+      exact same wire blob as the GATT service, and coexists with it.
+
 # Auto-enabled when a matching devicetree node is instantiated (single source of
 # truth: the build overlay). Gates compilation so an unused processor is dropped.
 config ZTC_POINTER
