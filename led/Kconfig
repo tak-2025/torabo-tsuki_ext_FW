@@ -25,6 +25,16 @@ config ZMK_LED_CONFIG_BLE
       Encrypted GATT service e1f4ae00 to read/write the rule table live. 72 B, so
       it fits in a single ATT write and needs no Write Long.
 
+config ZMK_LED_CONFIG_TUNNEL
+    bool "Expose the LED rules over the Studio RPC torabo tunnel"
+    depends on ZMK_STUDIO_TORABO_TUNNEL
+    default y
+    help
+      Register the settings with the torabo tunnel so they are reachable over
+      whichever transport Studio RPC is using (USB serial included).
+      Carries the exact same wire blob as the GATT service (feature id 0x0E), and
+      coexists with it.
+
 config ZMK_LED_CONFIG_LEFT_PRESENT
     bool "An LED exists on the left half"
     default n

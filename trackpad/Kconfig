@@ -19,6 +19,18 @@ config ZMK_TRACKPAD_CONFIG_BLE
       The v2 wire can exceed one ATT MTU, so enable CONFIG_BT_ATT_PREPARE_COUNT
       (>0) in the build so the GATT window can reassemble a Write Long.
 
+config ZMK_TRACKPAD_CONFIG_TUNNEL
+    bool "Expose the trackpad settings over the Studio RPC torabo tunnel"
+    depends on ZMK_STUDIO_TORABO_TUNNEL
+    default y
+    help
+      Register the settings with the torabo tunnel so they are reachable over
+      whichever transport Studio RPC is using (USB serial included).
+      Carries the exact same wire blob as the GATT service (feature id 0x0C), and
+      coexists with it. No reassembly here: RPC delivers a whole message. A wire
+      larger than CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE (4 devices at 20
+      layers encodes 3054 B) is refused rather than truncated; raise it there.
+
 config ZMK_TRACKPAD_CONFIG_DEV0_META
     int "Device 0 identity metadata byte"
     default 0

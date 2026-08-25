@@ -21,6 +21,16 @@ config ZMK_ENCODER_CONFIG_BLE
       Encrypted GATT service e1f4ad00 to read/write the assignments live. The
       config is ~124 B, so it fits in a single ATT write and needs no Write Long.
 
+config ZMK_ENCODER_CONFIG_TUNNEL
+    bool "Expose the encoder settings over the Studio RPC torabo tunnel"
+    depends on ZMK_STUDIO_TORABO_TUNNEL
+    default y
+    help
+      Register the settings with the torabo tunnel so they are reachable over
+      whichever transport Studio RPC is using (USB serial included).
+      Carries the exact same wire blob as the GATT service (feature id 0x0D), and
+      coexists with it.
+
 module = ZMK_ENCODER_CONFIG
 module-str = ZMK Encoder Config
 source "subsys/logging/Kconfig.template.log_config"

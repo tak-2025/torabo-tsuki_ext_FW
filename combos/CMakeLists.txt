@@ -10,6 +10,9 @@ if(CONFIG_ZMK_DYNAMIC_COMBOS)
         zephyr_library_sources(src/gatt_service.c)
     endif()
 
+    # Studio RPC (USB/BLE) settings window, same wire blobs as the GATT one.
+    zephyr_library_sources_ifdef(CONFIG_ZMK_DYNAMIC_COMBOS_TUNNEL src/tunnel_bridge.c)
+
     # The combo matching engine (literal copy of ZMK combo.c, RAM-backed defs)
     # is a position_state_changed listener that MUST run BEFORE zmk's keymap
     # listener to intercept combo keys. Listener order == link order of the

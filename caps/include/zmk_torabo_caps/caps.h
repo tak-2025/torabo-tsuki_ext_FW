@@ -41,6 +41,7 @@ enum torabo_feature_id {
     TORABO_FEAT_LED = 6,
     TORABO_FEAT_RESERVED_LAYERS = 7,
     TORABO_FEAT_LIVE_FEED = 8,
+    TORABO_FEAT_RPC_TUNNEL = 9,
 };
 
 /*
@@ -63,17 +64,24 @@ enum torabo_feature_id {
  * DIAG = the diagnostic characteristic e1f4af02 is present (Torabo-Float §13). */
 #define TORABO_CAPS_LIVE_FEED_DIAG 0x0001
 
+/* TORABO_FEAT_RPC_TUNNEL: which tunnel ops this firmware answers. Every settings
+ * feature listed above is also reachable through the tunnel, over whichever
+ * transport Studio RPC selected — USB serial included — using the exact same wire
+ * blob as its GATT service, addressed by the low byte of that service's UUID.
+ * The app needs this to know it can talk to a USB-connected keyboard at all. */
+#define TORABO_CAPS_TUNNEL_NOTIFY 0x0001 /* SUBSCRIBE/UNSUBSCRIBE + pushes work */
+
 /*
  * wire:
  *   header (8B): magic u16 | desc_ver u8 | fw_major u8 | fw_minor u8 |
  *                fw_patch u8 | feature_count u8 | _rsv u8
  *   per feature (4B): id u8 | wire_ver u8 | caps u16
  *
- * 8 + 8*4 = 40 B at most — a single read.
+ * 8 + 9*4 = 44 B at most — a single read.
  */
 #define TORABO_CAPS_HDR 8
 #define TORABO_CAPS_FEAT 4
-#define TORABO_CAPS_MAX_FEATURES 8
+#define TORABO_CAPS_MAX_FEATURES 9
 #define TORABO_CAPS_WIRE_CAP (TORABO_CAPS_HDR + TORABO_CAPS_MAX_FEATURES * TORABO_CAPS_FEAT)
 
 int torabo_caps_encode(uint8_t *buf, uint16_t cap, uint16_t *out_len);

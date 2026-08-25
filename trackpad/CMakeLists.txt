@@ -15,4 +15,7 @@ if(CONFIG_ZMK_TRACKPAD_CONFIG)
     if(CONFIG_ZMK_TRACKPAD_CONFIG_BLE)
         zephyr_library_sources(src/gatt_service.c)
     endif()
+
+    # Studio RPC (USB/BLE) settings window, same wire blob as the GATT one.
+    zephyr_library_sources_ifdef(CONFIG_ZMK_TRACKPAD_CONFIG_TUNNEL src/tunnel_bridge.c)
 endif()

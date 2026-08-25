@@ -22,6 +22,16 @@ config TORABO_CAPS_BLE
     help
       Read-only GATT service e1f4a000. Nothing to write: it describes the build.
 
+config TORABO_CAPS_TUNNEL
+    bool "Expose the descriptor over the Studio RPC torabo tunnel"
+    depends on ZMK_STUDIO_TORABO_TUNNEL
+    default y
+    help
+      Same read-only descriptor as the GATT service (feature id 0x00), reachable
+      over whichever transport Studio RPC is using. This is how a USB-connected
+      app discovers that the tunnel exists at all, so keep it on wherever the
+      tunnel is on: the descriptor gains an RpcTunnel entry when it is.
+
 config TORABO_FW_VERSION_MAJOR
     int "Torabo firmware version: major"
     default 0

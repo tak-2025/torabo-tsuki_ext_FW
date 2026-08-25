@@ -17,6 +17,16 @@ config ZMK_DYNAMIC_KEYMAP_BLE
       WRITE updates one slot at a time (small enough to fit a single ATT write,
       so no long-write is needed).
 
+config ZMK_DYNAMIC_KEYMAP_TUNNEL
+    bool "Expose the dynamic-keymap config over the Studio RPC torabo tunnel"
+    depends on ZMK_STUDIO_TORABO_TUNNEL
+    default y
+    help
+      Register the settings with the torabo tunnel so they are reachable over
+      whichever transport Studio RPC is using (USB serial included).
+      Carries the exact same READ/WRITE wire blobs as the GATT service (feature
+      id 0x0A), and coexists with it.
+
 config ZMK_DYNAMIC_KEYMAP_STEP_TAP_MS
     int "Per-step tap duration (ms) for TAP steps"
     default 2

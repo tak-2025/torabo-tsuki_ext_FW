@@ -71,6 +71,12 @@ static uint8_t build_features(struct feat_entry *out) {
      * a wire bump. */
     out[n++] = (struct feat_entry){TORABO_FEAT_LIVE_FEED, 1, TORABO_CAPS_LIVE_FEED_DIAG};
 #endif
+#if IS_ENABLED(CONFIG_ZMK_STUDIO_TORABO_TUNNEL)
+    /* wire v1 = the (feature_id, op, blob) tunnel request. The per-feature blobs
+     * are unchanged, so their own wire_ver above still governs what the app sends;
+     * this entry only says "the tunnel exists", i.e. USB can reach all of them. */
+    out[n++] = (struct feat_entry){TORABO_FEAT_RPC_TUNNEL, 1, TORABO_CAPS_TUNNEL_NOTIFY};
+#endif
 
     return n;
 }
