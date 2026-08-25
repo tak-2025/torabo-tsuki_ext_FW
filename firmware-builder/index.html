@@ -114,11 +114,6 @@
             <option value="pad">ミニトラックパッド</option>
             <option value="encoder">ロータリーエンコーダ</option>
           </select></div>
-        <div class="field indent row-variant" data-side="left"><span>└ パッド種別</span>
-          <select class="variant-sel" data-side="left" title="公式 / 自作(DIY)">
-            <option value="official">公式</option>
-            <option value="diy">自作 (DIY)</option>
-          </select></div>
         <label class="row row-led" data-side="left"><input type="checkbox" class="useled-chk" data-side="left" checked> 拡張LEDを使う</label>
         <div class="field indent row-ledmode" data-side="left"><span>└ LED制御</span>
           <select class="ledmode-sel" data-side="left" title="LEDの制御方式">
@@ -147,11 +142,6 @@
             <option value="none">なし</option>
             <option value="pad">ミニトラックパッド</option>
             <option value="encoder">ロータリーエンコーダ</option>
-          </select></div>
-        <div class="field indent row-variant" data-side="right"><span>└ パッド種別</span>
-          <select class="variant-sel" data-side="right" title="公式 / 自作(DIY)">
-            <option value="official">公式</option>
-            <option value="diy">自作 (DIY)</option>
           </select></div>
         <label class="row row-led" data-side="right"><input type="checkbox" class="useled-chk" data-side="right" checked> 拡張LEDを使う</label>
         <div class="field indent row-ledmode" data-side="right"><span>└ LED制御</span>
@@ -210,7 +200,7 @@ const other  = side => side === 'left' ? 'right' : 'left';
 const SNIP = {
   studio:'studio-rpc-usb-uart', splitCentral:'split-central',
   tb:'input-trackball', tpS:'input-trackpad-mini',
-  tpX:'input-trackpad-ext', tpXdiy:'input-trackpad-ext-diy',
+  tpX:'input-trackpad-ext',
   lst:'input-listener', spl0:'input-split', rcv0:'input-split-listener',
   led:'torabo-status-led-ext', liveExt:'torabo-trackpad-live-ext', liveSplit:'torabo-trackpad-live-split',
   fTrackball:'torabo-trackball', fMacros:'torabo-macros', fCombos:'torabo-combos', fLayers:'torabo-reserved-layers',
@@ -237,6 +227,9 @@ const SNIP = {
   liveFeed:'torabo-live-feed',
   // FW自己申告（バージョン・搭載機能・ワイヤ版数）。Studio がタブの出し分けに使う。
   caps:'torabo-caps',
+  // 独自設定を Studio RPC にも流す汎用トンネル。USB 接続でも全タブが使えるようになる。
+  // BLE GATT は無変更のまま並存。central 専用（RPC 実体が central にしか無い）。
+  rpcTunnel:'torabo-rpc-tunnel',
 };
 // 未実装キー → 表示ラベル（現在なし＝全構成ビルド可能）
 const MISSING_LABEL = {};
@@ -249,8 +242,8 @@ const state = {
   keyboardName:'torabo-tsuki',
   features:{ trackball:true, macros:true, combos:true, layers:true, layersN:10, trackpadlive:false, liveFeed:true },
   sides:{
-    left:  { std:'none', ext:'none', extDev:'none', variant:'official', useLed:true, ledMode:'legacy' },
-    right: { std:'ball', ext:'none', extDev:'none', variant:'official', useLed:true, ledMode:'legacy' },
+    left:  { std:'none', ext:'none', extDev:'none', useLed:true, ledMode:'legacy' },
+    right: { std:'ball', ext:'none', extDev:'none', useLed:true, ledMode:'legacy' },
   },
 };
 
@@ -332,7 +325,6 @@ function buildModel(){
   if (pd.ext==='pad'){
     const r = regOf('ext');                                  // 拡張パッドの reg スロット（encoder は枠を食わない）
     P.push(r===1 ? SNIP.tpXspl1 : SNIP.tpXspl);              // reg=0 / reg=1 とも実装済み
-    if (state.sides[periph].variant==='diy') P.push(SNIP.tpXdiy);  // DIY init 差し替えは split 版にも効く
   }
   else if (pd.ext==='encoder') P.push(SNIP.encX);
   // エンコーダのボタン: peripheral 側は GPIO を split(reg=2) で central へ流すだけ。
@@ -352,7 +344,6 @@ function buildModel(){
   else if (cd.std==='encoder') C.push(SNIP.encS);            // central 自身のエンコーダはローカル
   if (cd.ext==='pad'){
     C.push(SNIP.tpX);
-    if (state.sides[central].variant==='diy') C.push(SNIP.tpXdiy);
     if (state.features.trackpadlive) C.push(SNIP.liveExt);
   } else if (cd.ext==='encoder') C.push(SNIP.encX);
   // peripheral pointing の受け口（index = reg スロット）
@@ -384,6 +375,9 @@ function buildModel(){
   else if (ledWorks(central))                 C.push(SNIP.led);   // 従来版（central のみ）
   // FW が自分を名乗る（Studio が実在するタブだけ出せるように）。常に入れる。
   C.push(SNIP.caps);
+  // 独自設定を USB(Studio RPC) からも読み書きできるようにする。載っている機能の
+  // ぶんだけ自動で口が開き、BLE GATT はそのまま残るので常に入れる。
+  C.push(SNIP.rpcTunnel);
   // ライブフィード（キー/レイヤーを NOTIFY で push）。central 専用・未購読時ゼロコスト
   // なのでチェックが入っていれば載せる（Torabo-Float が繋がったときだけ発火する）。
   if (state.features.liveFeed) C.push(SNIP.liveFeed);
@@ -469,12 +463,6 @@ function validate(model){
       msgs.push({ k:'warn', t:`トラックパッド ライブ設定: ${tgt} を Studio のトラックパッドタブで編集→即反映（NVS保存）。既定は 層0/1=移動・層2=横スクロール・層3=縦スクロール。` });
     }
   }
-
-  // DIY パッド
-  ['left','right'].forEach(s=>{
-    if (sideDevices(s).ext==='pad' && state.sides[s].variant==='diy')
-      msgs.push({ k:'ok', t:`${s} 拡張パッド(DIY): 公式 input-trackpad-ext に input-trackpad-ext-diy を重ねて init を差し替えます。DIY用 init 未確定のうちは公式と同じ挙動。` });
-  });
 
   if (!msgs.some(m=>m.k==='err')) msgs.unshift({ k:'ok', t:'設定OK。生成物を fork の各ファイルへ置き換えてビルドしてください。' });
   return msgs;
@@ -600,11 +588,10 @@ function render(){
   document.getElementById('role_left').className  = 'badge ' + (central==='left'?'central':'');
   document.getElementById('role_right').className = 'badge ' + (central==='right'?'central':'');
 
-  // 条件表示（拡張FFC / パッド種別 / 拡張LED）
+  // 条件表示（拡張FFC / 拡張LED）
   for (const side of ['left','right']){
     const s = state.sides[side];
     document.querySelector('.row-extdev[data-side='+side+']').style.display = s.ext!=='none' ? '' : 'none';
-    document.querySelector('.row-variant[data-side='+side+']').style.display = (s.ext!=='none' && s.extDev==='pad') ? '' : 'none';
     const ledRowOn = (side===central && s.ext==='led');
     document.querySelector('.row-led[data-side='+side+']').style.display = ledRowOn ? '' : 'none';
     document.querySelector('.row-ledmode[data-side='+side+']').style.display = (ledRowOn && s.useLed) ? '' : 'none';
@@ -613,7 +600,6 @@ function render(){
     document.querySelector('.std-sel[data-side='+side+']').value = s.std;
     document.querySelector('.ext-sel[data-side='+side+']').value = s.ext;
     document.querySelector('.extdev-sel[data-side='+side+']').value = s.extDev;
-    document.querySelector('.variant-sel[data-side='+side+']').value = s.variant;
     document.querySelector('.useled-chk[data-side='+side+']').checked = s.useLed;
   }
 
@@ -656,7 +642,6 @@ document.querySelectorAll('.ext-sel').forEach(s=>s.addEventListener('change', e=
   render();
 }));
 document.querySelectorAll('.extdev-sel').forEach(s=>s.addEventListener('change', e=>{ state.sides[e.target.dataset.side].extDev=e.target.value; render(); }));
-document.querySelectorAll('.variant-sel').forEach(s=>s.addEventListener('change', e=>{ state.sides[e.target.dataset.side].variant=e.target.value; render(); }));
 document.querySelectorAll('.useled-chk').forEach(c=>c.addEventListener('change', e=>{ state.sides[e.target.dataset.side].useLed=e.target.checked; render(); }));
 document.querySelectorAll('.ledmode-sel').forEach(s=>s.addEventListener('change', e=>{ state.sides[e.target.dataset.side].ledMode=e.target.value; render(); }));
 
