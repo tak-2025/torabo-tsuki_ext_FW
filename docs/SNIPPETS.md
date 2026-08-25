@@ -38,6 +38,7 @@ fork 側にスニペットのファイルをコピーする必要はありませ
 | `torabo-reserved-layers` | 機能 | central | 空の予約レイヤーを N 枚追加（Studio が実行時に確保）。無いと LAYER「+」が押せない | 枚数は build.yaml の `cmake-args` |
 | `torabo-caps` | 機能（裏方） | central | 機能記述子。FW が構成を自己申告し、アプリがタブを出し分ける | — |
 | `torabo-live-feed` | 機能（裏方） | central | 押下キー/レイヤーを BLE NOTIFY で配信（Torabo-Float 用オーバーレイ） | — |
+| `torabo-rpc-tunnel` | 機能（裏方） | central | 独自設定を Studio RPC にも流す汎用トンネル。**USB 接続でも全タブが使える** | — |
 | `input-trackpad-ext` | 配線 | パッド側 | 拡張トラックパッドの I2C1 土台（IQS7211E＋スクロール慣性） | — |
 | `input-trackpad-ext-diy` | 配線 | パッド側 | 上記の DIY 版（別 init シンボル）。`input-trackpad-ext` の上に重ねる | `input-trackpad-ext` |
 | `input-trackpad-ext-split` | 配線 | peripheral | 拡張パッドを peripheral 側に繋ぎ split で送る土台 | — |
@@ -80,6 +81,11 @@ BLE でライブ編集する機能は、それぞれ暗号化 GATT サービス�
   `conf` の `CONFIG_TORABO_RESERVED_LAYERS` は **枚数を作りません**（アプリへ枚数を申告する `torabo-caps` 用）。Zephyr は devicetree を Kconfig より先に処理し、DTS の前処理に `autoconf.h` を渡さないため、overlay の中では `CONFIG_*` が常に未定義になるからです。ビルダーは両方を揃えて出力します。
 - **`torabo-caps`** — 「このFWは何ができるか」（バージョン・搭載機能・各機能のワイヤ版・機能ビット）を read-only GATT で自己申告する裏方。アプリは接続時にこれを読み、存在するタブだけを表示する。書き込むものは無い。
 - **`torabo-live-feed`** — 押下キーとレイヤーを BLE NOTIFY で配信し、デスクトップオーバーレイ Torabo-Float がリアルタイム表示する。クライアントが購読中のみ発火するので未接続なら無コスト。central 専用（レイヤー状態と全体キー位置を知るのは central だけ）。
+- **`torabo-rpc-tunnel`** — 独自設定（トラックボール/トラックパッド/マクロ/コンボ/エンコーダ/LED/ライブフィード）を、BLE GATT サービスに加えて **Studio RPC の土管にも流す**。ワイヤは GATT と 1 バイトも変わらないので、アプリ側のコーデックはそのまま使い回せる。これが入っていると **USB 接続でも全タブが読み書きでき**、USB 接続の Torabo-Float にライブフィードが届く。
+  - 入れるのは central だけ（RPC の実体は central にしかない）。GATT 側は無変更のまま残るので、既存の BLE クライアントには一切影響しない。
+  - この 1 行だけで足りる。各機能の口は `CONFIG_ZMK_*_TUNNEL`（`default y`、このスニペットに `depends on`）なので、載っている機能のぶんだけ自動で開き、載っていない機能は勝手に消える。
+  - `torabo-caps` の記述子に `RpcTunnel`（機能 id 9）が増え、アプリはこれを見て経路の有無を判定する。
+  - コスト実測（トラックボール central）: FLASH +約1KB / RAM +約6KB（読み出し用 2KB のステージングバッファと、リクエストをその場でデコードするぶん大きくした RPC スレッドスタック）。
 
 ---
 
