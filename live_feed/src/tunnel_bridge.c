@@ -28,6 +28,13 @@
  *     sources, tagged the same way.
  * Deliberately NOT a selector byte in the request: the wire blobs then stop being
  * byte-identical to the GATT ones, which is the whole point of the tunnel.
+ *
+ * Pushes here are droppable, which is the tunnel's contract and already how the
+ * BLE side behaves (§6-5: fire-and-forget, no retry). A client that misses a
+ * record recovers the same way it starts up — the READ above, or the SNAPSHOT it
+ * gets on subscribing — because every record carries the full layer state, not a
+ * delta. Only a key press/release pair can genuinely be lost, and the next event
+ * of any kind corrects the display.
  */
 
 #include <zephyr/kernel.h>
