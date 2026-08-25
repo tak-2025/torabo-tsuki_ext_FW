@@ -15,6 +15,18 @@ menuconfig ZMK_LIVE_FEED
 
 if ZMK_LIVE_FEED
 
+config ZMK_LIVE_FEED_TUNNEL
+    bool "Expose the live feed over the Studio RPC torabo tunnel"
+    depends on ZMK_STUDIO_TORABO_TUNNEL
+    default y
+    help
+      Also push the feed through the torabo tunnel (feature id 0x0F), so a Float
+      connected over USB receives the same 16-byte records as a BLE subscriber.
+      Key/layer and diagnostic records share one stream here; evt_type already
+      tells them apart. Pushes only happen while a client has sent SUBSCRIBE, and
+      that subscription is dropped when the client becomes unreachable, so an
+      unused build still pays nothing.
+
 config ZMK_LIVE_FEED_PREF_LATENCY
     int "Preferred peripheral latency while a client is subscribed"
     default 10
@@ -26,6 +38,7 @@ config ZMK_LIVE_FEED_PREF_LATENCY
 
 config ZMK_LIVE_FEED_THREAD_STACK_SIZE
     int "Live feed notify thread stack size"
+    default 1536 if ZMK_LIVE_FEED_TUNNEL
     default 1024
     help
       Stack for the dedicated live_feed work queue thread. This thread owns the
@@ -33,6 +46,9 @@ config ZMK_LIVE_FEED_THREAD_STACK_SIZE
       exhausted, and also runs compute_keymap_crc(). Sized like ZMK's own BLE
       notify thread (CONFIG_ZMK_BLE_THREAD_STACK_SIZE, the HOG send queue) with a
       little extra headroom for the CRC walk.
+
+      With the tunnel on, the same thread also encodes a protobuf Notification
+      and runs nanopb's encoder, hence the higher default.
 
 config ZMK_LIVE_FEED_THREAD_PRIORITY
     int "Live feed notify thread priority"

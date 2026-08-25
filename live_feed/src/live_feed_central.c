@@ -162,6 +162,26 @@ void live_feed_fill_snapshot(struct live_feed_evt *out) {
 
 /* ---- the single work item that owns bt_gatt_notify ------------------------ */
 
+/* Every push goes out on both windows: the BLE NOTIFY characteristic, and the
+ * Studio RPC tunnel when a client subscribed there (which is how a USB-connected
+ * Float receives the feed). Each side no-ops cheaply when nobody is listening —
+ * bt_gatt_notify on a clear CCC, torabo_tunnel_notify on an empty subscription —
+ * so an unused transport costs one branch per event. Both may block while their
+ * transport drains, which is exactly why this only ever runs on live_feed_wq. */
+static void lf_push_evt(const struct live_feed_evt *e) {
+    (void)live_feed_gatt_notify(e); /* fire-and-forget; drop on error */
+#if IS_ENABLED(CONFIG_ZMK_LIVE_FEED_TUNNEL)
+    (void)live_feed_tunnel_notify(e);
+#endif
+}
+
+static void lf_push_diag(const struct live_feed_diag *d) {
+    (void)live_feed_diag_notify(d);
+#if IS_ENABLED(CONFIG_ZMK_LIVE_FEED_TUNNEL)
+    (void)live_feed_tunnel_notify(d);
+#endif
+}
+
 static void feed_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
@@ -190,7 +210,7 @@ static void feed_work_handler(struct k_work *work) {
         e.pressed = lpk.pressed;
         e.source = lpk.source;
         fill_state_fields(&e);
-        (void)live_feed_gatt_notify(&e); /* fire-and-forget; drop on error */
+        lf_push_evt(&e);
     }
 
     if (send_state) {
@@ -200,7 +220,7 @@ static void feed_work_handler(struct k_work *work) {
         e.evt_type = send_state; /* LIVE_FEED_EVT_LAYER or _SNAPSHOT */
         e.position = LIVE_FEED_POSITION_NONE;
         fill_state_fields(&e);
-        (void)live_feed_gatt_notify(&e);
+        lf_push_evt(&e);
     }
 }
 
@@ -422,7 +442,7 @@ static void diag_work_handler(struct k_work *work) {
         if (mask & BIT(i)) {
             struct live_feed_diag d;
             diag_build_record(i, &d);
-            (void)live_feed_diag_notify(&d);
+            lf_push_diag(&d);
         }
     }
 }
@@ -435,7 +455,7 @@ static void diag_hb_handler(struct k_work *work) {
     for (int i = 0; i < (int)DIAG_DEV_LIMIT; i++) {
         struct live_feed_diag d;
         diag_build_record(i, &d);
-        (void)live_feed_diag_notify(&d);
+        lf_push_diag(&d);
     }
     k_work_reschedule_for_queue(&live_feed_wq, &diag_hb_work,
                                 K_MSEC(CONFIG_ZMK_LIVE_FEED_DIAG_HEARTBEAT_MS));

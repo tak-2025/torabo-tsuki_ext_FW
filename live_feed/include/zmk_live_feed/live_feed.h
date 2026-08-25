@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <zephyr/sys/util.h>
 #include <zephyr/types.h>
 
 /* Bumped only on an incompatible wire change (new fields => new proto_ver). */
@@ -61,10 +62,14 @@ BUILD_ASSERT(sizeof(struct live_feed_evt) == 16, "live_feed wire must stay 16 by
 void live_feed_fill_snapshot(struct live_feed_evt *out);
 
 /*
- * Called by the GATT layer when the CCC subscription state changes. On subscribe
- * (enabled=true) the central requests a lower connection latency and schedules a
- * SNAPSHOT push; on unsubscribe it simply stops (bt_gatt_notify no-ops when the
- * CCC is clear). Implemented in live_feed_central.c.
+ * Called when a client subscribes or unsubscribes — from the GATT CCC callback,
+ * and from the tunnel's SUBSCRIBE op. On subscribe (enabled=true) the central
+ * schedules a SNAPSHOT push so a fresh client immediately knows the current
+ * state; on unsubscribe it simply stops (each push window no-ops on its own once
+ * nobody is listening). Implemented in live_feed_central.c.
+ *
+ * The connection-latency bump belongs to the BLE path only and stays in
+ * gatt_service.c's CCC callback, not here.
  */
 void live_feed_on_subscribe(bool enabled);
 
@@ -134,6 +139,10 @@ struct live_feed_diag {
 
 BUILD_ASSERT(sizeof(struct live_feed_diag) == 16, "live_feed diag wire must stay 16 bytes");
 
+/* Both record types share one envelope; the tunnel pushes them down one stream
+ * and the app tells them apart by evt_type, exactly as it does over GATT. */
+#define LIVE_FEED_RECORD_SIZE 16
+
 /* How many device records the READ (af02) returns at most. Bounds the read buffer. */
 #define LIVE_FEED_DIAG_MAX_DEVICES 8
 
@@ -158,3 +167,12 @@ uint16_t live_feed_diag_fill_all(uint8_t *buf, uint16_t cap);
  * live_feed_central.c.
  */
 void live_feed_diag_set_stream(bool on);
+
+#if IS_ENABLED(CONFIG_ZMK_LIVE_FEED_TUNNEL)
+/*
+ * Push one 16-byte record (either envelope) to a tunnel subscriber. Implemented
+ * in tunnel_bridge.c; a no-op returning -ENOTSUP while nobody has subscribed, so
+ * the central can call it next to every live_feed_gatt_notify() unconditionally.
+ */
+int live_feed_tunnel_notify(const void *rec);
+#endif
