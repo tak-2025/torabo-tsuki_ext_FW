@@ -548,9 +548,19 @@ function genWest(model){
   // 上流ドライバは INPUT_BTN_2 を出さないので、上流のままだと GST_HOLD（Studio の
   // 「長押し」割当）が無反応になる。ビルドは通ってしまうので気づきにくい。
   const usesPad = /input-trackpad/.test(joined);
+  // トンネル(torabo-rpc-tunnel)は RPC subsystem を zmk 本体側に持つので、上流 v0.3 の
+  // ままでは絶対にビルドできない（snippet が要求する CONFIG が存在しない）。
+  // トンネルを載せない構成なら素の zmk が正しいので、fork 指定はこの分岐でのみ出す。
+  const usesTunnel = joined.includes(SNIP.rpcTunnel);
   if (!usesModule && !usesPad)
     return '# （torabo-tsuki_ext_FW モジュールもトラックパッドも使わないため west.yml の変更は不要）';
   const o = [];
+  if (usesTunnel) o.push(
+    '# ⚠ zmk 本体は「追記」ではなく「置き換え」です。',
+    '#    既存の  - name: zmk / remote: zmkfirmware / revision: v0.3  の3〜4行を必ず削除してください。',
+    '#    同名の project が2つあると west が Malformed manifest（used twice）で落ちます。',
+    '',
+  );
   if (usesPad) o.push(
     '# ⚠ zmk-driver-iqs7211e は「追記」ではなく「置き換え」です。',
     '#    既存の  - name: zmk-driver-iqs7211e / remote: sekigon-gonnoc  の2〜3行を必ず削除してください。',
@@ -562,6 +572,13 @@ function genWest(model){
     '    - name: tak-2025','      url-base: https://github.com/tak-2025',
     '  projects:','    # …既存はそのまま…',
   );
+  if (usesTunnel) o.push(
+    '    # ↓ 既存の zmk エントリを削除した上で、これを入れる。',
+    '    #   v0.3 + トンネルの RPC subsystem（torabo-rpc-tunnel が要求する）。',
+    '    #   この fork の app/west.yml が torabo.proto 入りの zmk-studio-messages fork も',
+    '    #   連れてくるので、messages をここに書き足す必要はない。',
+    '    - name: zmk','      remote: tak-2025','      revision: dev','      import: app/west.yml',
+  );
   if (usesPad) o.push(
     '    # ↓ 既存の zmk-driver-iqs7211e エントリを削除した上で、これを入れる。',
     '    #   press&hold -> INPUT_BTN_2 を出す改変入り fork（GPL-3.0 のまま）。',
@@ -569,7 +586,8 @@ function genWest(model){
     '    - name: zmk-driver-iqs7211e','      remote: tak-2025','      revision: torabo-tsuki',
   );
   if (usesModule) o.push(
-    '    - name: torabo-tsuki_ext_FW','      remote: tak-2025','      revision: main',
+    '    # トンネル対応が main にマージされるまでは dev。',
+    '    - name: torabo-tsuki_ext_FW','      remote: tak-2025','      revision: dev',
   );
   o.push('  self:','    path: config');
   return o.join('\n');

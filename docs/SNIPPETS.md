@@ -17,7 +17,15 @@ fork 側にスニペットのファイルをコピーする必要はありませ
 |---|---|
 | `build.yaml`（ルート） | 毎回（どのスニペットで焼くか） |
 | `boards/shields/torabo_tsuki_lp/<central shield>.conf` | 予約レイヤー枚数・デバイス名など、ビルダーが出したときだけ |
-| `config/west.yml` | 初回のみ（モジュール参照とドライバ fork の指定） |
+| `config/west.yml` | 初回のみ（モジュール参照と、zmk 本体／ドライバの fork 指定） |
+
+⚠ `torabo-rpc-tunnel` を載せる構成（＝ビルダーが出す構成すべて）は、**zmk 本体も fork
+（`tak-2025/zmk` の `dev`）に差し替える**必要があります。トンネルの RPC subsystem は
+zmk 本体側にあり、上流 v0.3 には存在しないためです。ビルダーの `config/west.yml` 出力が
+そのぶんも含んだ形になっているので、そのまま貼り替えてください。既存の
+`- name: zmk / remote: zmkfirmware` は**消してから**入れること（同名 project が2つあると
+west が Malformed manifest で落ちます）。この fork の `app/west.yml` が `torabo.proto` 入りの
+`zmk-studio-messages` fork も連れてくるので、messages を自分で書き足す必要はありません。
 
 ---
 
