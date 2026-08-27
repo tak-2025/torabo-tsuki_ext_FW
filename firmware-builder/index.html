@@ -577,6 +577,7 @@ function genWest(model){
     '    #   v0.3 + トンネルの RPC subsystem（torabo-rpc-tunnel が要求する）。',
     '    #   この fork の app/west.yml が torabo.proto 入りの zmk-studio-messages fork も',
     '    #   連れてくるので、messages をここに書き足す必要はない。',
+    '    #   dev 固定: fork の main は上流追従用に空けてあるので触らない。',
     '    - name: zmk','      remote: tak-2025','      revision: dev','      import: app/west.yml',
   );
   if (usesPad) o.push(
@@ -586,8 +587,7 @@ function genWest(model){
     '    - name: zmk-driver-iqs7211e','      remote: tak-2025','      revision: torabo-tsuki',
   );
   if (usesModule) o.push(
-    '    # トンネル対応が main にマージされるまでは dev。',
-    '    - name: torabo-tsuki_ext_FW','      remote: tak-2025','      revision: dev',
+    '    - name: torabo-tsuki_ext_FW','      remote: tak-2025','      revision: main',
   );
   o.push('  self:','    path: config');
   return o.join('\n');
