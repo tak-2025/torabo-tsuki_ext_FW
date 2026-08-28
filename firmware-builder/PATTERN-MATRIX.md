@@ -18,11 +18,11 @@ Authoritative enumeration of every valid hardware configuration for the torabo-t
 | `base` | `studio-rpc-usb-uart` + `split-central` (central side, always) | EXISTING |
 | `tb` | `input-trackball` | EXISTING |
 | `tpS` | `input-trackpad-mini` | EXISTING |
-| `tpX` | `input-trackpad-ext` (central; listener built in; `input-trackpad-ext-diy` optional add-on for DIY init) | EXISTING |
+| `tpX` | `input-trackpad-ext` (central; listener built in) | EXISTING |
 | `lst` | `input-listener` (central-local pointing device) | EXISTING |
 | `spl0` | `input-split` (hardcoded reg=<0>) | EXISTING |
 | `rcv0` | `input-split-listener` (hardcoded reg=<0>) | EXISTING |
-| `tpXspl` | `input-trackpad-ext-split` — split-export of extension trackpad（peripheral 側。listener を持たず `zmk,input-split` reg=0 で central へ転送。central は既存 `rcv0` で受ける。DIY は `input-trackpad-ext-diy` を後段に重ねる）| **EXISTING**（2026-07-12 実装, 未実機検証。**reg=0 のみ** — reg=1 は下記 `reg1` 待ち）|
+| `tpXspl` | `input-trackpad-ext-split` — split-export of extension trackpad（peripheral 側。listener を持たず `zmk,input-split` reg=0 で central へ転送。central は既存 `rcv0` で受ける）| **EXISTING**（2026-07-12 実装, 未実機検証。**reg=0 のみ** — reg=1 は下記 `reg1` 待ち）|
 | `spl1*` / `rcv1*` | reg=<1> twins of `input-split` / `input-split-listener` | **MISSING** |
 | `encS` | `input-encoder` (standard-FFC EC11 回転; central 自身に載る場合はローカル。peripheral に載る場合は central に `encRecv` を併用) | **EXISTING**（2026-07-11 実装, 未実機検証）|
 | `encRecv` | `input-encoder-recv` (central 受け口: encoder device disabled + keymap-sensors ノードで LEN/index 確保。peripheral に標準エンコーダがある central 側に付ける) | **EXISTING**（2026-07-11 実装, 未実機検証）|
@@ -95,7 +95,7 @@ Every (device × connector × role) cell. "Central adds" = fragments that go on 
 | Trackball | extension | any | **INVALID** (no SPI on extension) | — | n/a |
 | Mini pad | standard | central | `tpS` + `lst` | — | EXISTING |
 | Mini pad | standard | peripheral | `tpS` + `spl0` | `rcv0` | EXISTING |
-| Mini pad | extension | central | `tpX` (+ `input-trackpad-ext-diy` if DIY variant) — listener built in | — | EXISTING |
+| Mini pad | extension | central | `tpX` — listener built in | — | EXISTING |
 | Mini pad | extension | peripheral | `tpXspl*` at its assigned reg slot | `rcv0` (EXISTING) if slot 0, `rcv1*` if slot 1 | **✳MISSING** |
 | Encoder | standard | central | `encS*` + keymap `sensor-bindings` + `btn*` (P0.20) | — | **✳MISSING** |
 | Encoder | standard | peripheral | `encS*` (split sensor) + `btn*` (P0.20) | `encRecv` = `input-encoder-recv` (§0; sensor-index/LEN reservation on the central — see PLAN-encoder-extender.md §3-1. No reg slot: ZMK relays sensors natively) | **✳MISSING** |
@@ -353,10 +353,10 @@ Four work items; ordered by unlock value (counts against the 144-config space ab
 | 1a | ~~input-encoder (std 回転)~~ ✅ | `input-encoder`（物理側）＋`input-encoder-recv`（central受け）。keymap に `sensor-bindings` を追加して割当 | 標準エンコーダの回転 | 実装済み（未実機検証）|
 | 1b | **`encoder-button`** composite `kscan-gpio-direct`（P0.20 std / P0.31 ext / 両方）＋ transform に1キー追加 | ボタン付きエンコーダの押下 | ボタン付き全構成 | エンコーダ押下が有効化 |
 | 1c | **`input-encoder-ext`**（＋`-recv`）拡張FFCのエンコーダ（P0.17/21、ボタンP0.31） | E-ext 系 | 拡張エンコーダ | +… |
-| 2 | ~~**`input-trackpad-ext-split`**~~ ✅ | 実装済（reg=0）。central は既存 `input-split-listener` で受ける。DIY は `input-trackpad-ext-diy` を後段に重ねる | — | Groups 2 & 11 が解禁（reg=0 系）|
+| 2 | ~~**`input-trackpad-ext-split`**~~ ✅ | 実装済（reg=0）。central は既存 `input-split-listener` で受ける | — | Groups 2 & 11 が解禁（reg=0 系）|
 | 3 | **reg=<1> 版一式**: `input-split` / `input-split-listener` / `input-trackpad-ext-split` の reg=1 対応（or reg パラメータ化）| 3 snippet twins | 24/144 configs (peripheral with two pointing devices: B/P, P/P) | +24 → 144/144 |
 
 Notes:
 - Item 3 without item 2 unlocks nothing: every reg1 config also needs `X-split` (the second peripheral pointing device is always the extension pad).
 - Within item 1, `input-encoder-ext` (E-ext, 80 configs) edges out `input-encoder` (E-std, 63) if further splitting is needed; `encoder-button` first either way.
-- Orthogonal, no backlog impact: official-vs-DIY pad init (`input-trackpad-ext-diy` EXISTING; flag on any mini-trackpad), extender FPC vs FPC+LED (`torabo-status-led-ext` EXISTING, central only), central-side choice (pure left/right label swap).
+- Orthogonal, no backlog impact: extender FPC vs FPC+LED (`torabo-status-led-ext` EXISTING, central only), central-side choice (pure left/right label swap).

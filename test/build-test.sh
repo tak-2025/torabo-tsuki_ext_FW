@@ -17,7 +17,7 @@ set -euo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODULE_DIR="$(cd "${TEST_DIR}/.." && pwd)"
-HUB_DIR="$(cd "${MODULE_DIR}/../torabo-tsuki-config" && pwd)"
+HUB_DIR="$(cd "${MODULE_DIR}/../tako-custom" && pwd)"
 WORKSPACE_DIR="${MODULE_DIR}/.zmk-workspace"
 FIRMWARE_DIR="${MODULE_DIR}/firmware"
 DOCKER_IMAGE="zmkfirmware/zmk-build-arm:stable"

@@ -1,20 +1,18 @@
 # torabo-tsuki ファームウェアビルダー (v1)
 
+**→ <https://tak-2025.github.io/torabo-tsuki_ext_FW/>**
+
+ブラウザで開くだけで使えます（ビルド・インストール不要）。オフラインで使いたい場合は
+[`index.html`](index.html) をダウンロードしてダブルクリックでも同じものが動きます（外部通信ゼロの単一 HTML）。
+
 各サイドの**現物のハードウェア構成**（標準FFC・拡張基盤・拡張FFC に付けるデバイス）と、
 使いたい**機能**（トラックボール/トラックパッド設定・マクロ・コンボ・ライブフィード・予約レイヤーなど）を
 画面で選ぶと、fork に置き換える `build.yaml` / `boards/shields/torabo_tsuki_lp/<shield>.conf` / `config/west.yml`
 を生成する**ビルド時の機能登録ジェネレータ**です。
 
-- これは「どの機能をFWに**焼くか**」と「どのスニペットの組み合わせでビルドするか」を決めるもの。
-  値（コンボ内容・速度・LEDルールなど）は焼いた後に **BLE でライブ編集**します（[Torabo-Studio](https://github.com/tak-2025/Torabo-Studio)）。
-- 焼く機能そのものを変える／ハード構成を変えるときだけ**再ビルド＋再フラッシュ**が必要です。
-- 構成に応じた overlay/CONFIG の組み合わせ（トポロジー）を自動で解決するので、手作業のスニペット選定を省けます。
-  対応する物理パターンの全列挙・buildability の source-of-truth は [`PATTERN-MATRIX.md`](PATTERN-MATRIX.md)。
-
 ## 使い方
 
-1. **[https://tak-2025.github.io/torabo-tsuki_ext_FW/](https://tak-2025.github.io/torabo-tsuki_ext_FW/)** を開く（ビルド・インストール不要）。
-   オフラインで使いたい場合は [`index.html`](index.html) をダウンロードしてダブルクリックでも同じものが動きます（外部通信ゼロの単一 HTML）。
+1. 上記の URL をブラウザで開く。
 2. 上から順に選ぶ:
    - **構成** — central（トラックボール／設定を統括する側）が左右どちらか。
    - **デバイス名** — ペアリング時に表示される BLE/USB 名。
@@ -31,7 +29,15 @@
      トラックパッドを積む構成では、既存の `zmk-driver-iqs7211e` エントリを
      `tak-2025 / torabo-tsuki`（press&hold 対応の fork。GPL-3.0 のまま）に**置き換え**ます。
      上流のままだとビルドは通るのに Studio の「長押し」割当だけが無反応になります。
-4. push して GitHub Actions、またはローカル `west build`（[../../torabo-tsuki-config/BUILD.md](../../torabo-tsuki-config) 参照）でビルド。
+4. push して GitHub Actions、またはローカル `west build`（[../../tako-custom/BUILD.md](../../tako-custom) 参照）でビルド。
+
+## このツールの位置づけ
+
+- これは「どの機能をFWに**焼くか**」と「どのスニペットの組み合わせでビルドするか」を決めるもの。
+  値（コンボ内容・速度・LEDルールなど）は焼いた後に **BLE でライブ編集**します（[Torabo-Studio](https://github.com/tak-2025/Torabo-Studio)）。
+- 焼く機能そのものを変える／ハード構成を変えるときだけ**再ビルド＋再フラッシュ**が必要です。
+- 構成に応じた overlay/CONFIG の組み合わせ（トポロジー）を自動で解決するので、手作業のスニペット選定を省けます。
+  対応する物理パターンの全列挙・buildability の source-of-truth は [`PATTERN-MATRIX.md`](PATTERN-MATRIX.md)。
 
 ## ビルド可否バッジ（Tier）
 
@@ -45,7 +51,7 @@
 
 v0 から拡張され、以下が実装済みです（いずれも `default n`、スニペットで個別に ON/OFF）:
 
-- **ポインティングデバイス** — トラックボール／ミニトラックパッド（標準FFC・拡張FFC、公式/DIY init）。
+- **ポインティングデバイス** — トラックボール／ミニトラックパッド（標準FFC・拡張FFC）。
   central 直結・peripheral からの split 中継（拡張パッドの split エクスポート含む、reg=0 / reg=1）に対応。
 - **ロータリーエンコーダ** — 回転（標準/拡張FFC）＋ボタン押下を、central 直結・peripheral split の両方で。
   回転は sensor 経路、ボタンは input 経路に乗るため keymap/transform の改造は不要。レイヤーごとの割当は Studio でライブ編集。
