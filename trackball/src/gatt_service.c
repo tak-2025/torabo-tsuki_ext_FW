@@ -35,8 +35,8 @@ LOG_MODULE_DECLARE(ztc_config, CONFIG_ZMK_TRACKBALL_CONFIG_LOG_LEVEL);
 static struct bt_uuid_128 ztc_svc_uuid = BT_UUID_INIT_128(ZTC_BT_UUID_SVC);
 static struct bt_uuid_128 ztc_cfg_uuid = BT_UUID_INIT_128(ZTC_BT_UUID_CFG);
 
-/* compile-time upper bound on the wire size for stack buffers */
-#define ZTC_WIRE_CAP (8u + (uint32_t)ZTC_MAX_LAYERS * 12u)
+/* ZTC_WIRE_CAP (the v3 length: hdr + layers + coast trailer) comes from config.h
+ * so this stack buffer can never drift behind a wire bump. */
 
 static ssize_t ztc_read_cfg(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf,
                             uint16_t len, uint16_t offset) {

@@ -18,8 +18,17 @@
  *     consumed by the tp_keys processor.
  * A binding is { behavior, mods, param } — behavior selects which ZMK behavior
  * the firmware fires (none/kp/cp/mo/to/tog); the firmware builds the binding at
- * runtime (see include/zmk_trackpad_config/binding.h). v1 wire is still accepted
- * on WRITE (upgraded to this model); READ always emits v2.
+ * runtime (see include/zmk_trackpad_config/binding.h).
+ *
+ * v3 appends ONE inertial-scroll ("coast") parameter set PER DEVICE to the wire's
+ * device header — enable / friction / start threshold. It only ever affects the
+ * SCROLL role; MOVE / OFF / ENCODER are byte-identical to v2. There is
+ * deliberately no per-layer and no per-axis coast setting: a pad either glides or
+ * it does not, and the two axes share the numbers while decaying independently.
+ *
+ * v1 and v2 wires are still accepted on WRITE (v1 upgraded to the v2 model; both
+ * land with coasting DISABLED, i.e. exactly the old behavior); READ always emits
+ * v3.
  */
 
 #pragma once
@@ -113,6 +122,25 @@ enum tp_behavior {
 #define TP_STEP_MIN 1u
 #define TP_STEP_MAX 32u
 
+/* ------------------------------------------------------------------------
+ * Inertial scroll ("coast"), v3 — per device, SCROLL role only.
+ *
+ * friction  1..32, same shape/range as `step` so the app can reuse its slider.
+ *           It is the per-tick velocity loss in 1/256ths: the coast velocity is
+ *           multiplied by (256 - 3*friction)/256 every TP_COAST_TICK_MS. Small =
+ *           long glide, large = stops almost at once (see tp_pointer.c).
+ * threshold 1..255, in OUTPUT wheel ticks per second — the scroll speed the
+ *           finger must still have when it lifts for a glide to start at all.
+ *           It is measured AFTER `step` scaling, so it means what the host will
+ *           actually see, independent of how the axis is geared.
+ * ------------------------------------------------------------------------ */
+#define TP_COAST_FRICTION_MIN 1u
+#define TP_COAST_FRICTION_MAX 32u
+#define TP_COAST_FRICTION_DEFAULT 8u
+#define TP_COAST_THRESHOLD_MIN 1u
+#define TP_COAST_THRESHOLD_MAX 255u
+#define TP_COAST_THRESHOLD_DEFAULT 24u
+
 /* ---- live (in-RAM) snapshot: natural alignment, read locklessly ---------- */
 
 /* One fire target. Wire form is 4B (behavior u8, mods u8, param u16 LE); in RAM
@@ -147,9 +175,17 @@ struct tp_layer_cfg {
     struct tp_gestures gestures;
 };
 
+/* Inertial scroll, one set per device (v3). Never per-layer, never per-axis. */
+struct tp_coast_cfg {
+    uint8_t enable;    /* 0 = off (v1/v2 behavior), 1 = glide after lift */
+    uint8_t friction;  /* clamped TP_COAST_FRICTION_MIN..MAX */
+    uint8_t threshold; /* clamped TP_COAST_THRESHOLD_MIN..MAX, wheel ticks/s */
+};
+
 struct tp_device_cfg {
     uint8_t device_id; /* enum tp_device_id (wire slot) */
     uint8_t meta;      /* TP_META(side, conn, kind); 0 = unknown. FW-authoritative. */
+    struct tp_coast_cfg coast; /* v3; all-zero/disabled for a v1/v2 wire */
     struct tp_layer_cfg layers[TP_MAX_LAYERS];
 };
 
@@ -198,6 +234,26 @@ static inline struct tp_gestures tp_gestures_for(const struct tp_snapshot *s, ui
     return none_gestures;
 }
 
+/* Fail-open coast lookup by device id (unknown device => disabled, i.e. exactly
+ * the pre-v3 behavior). Returned by value like the accessors above, so the input
+ * path keeps one consistent copy for the whole event. */
+static inline struct tp_coast_cfg tp_coast_for(const struct tp_snapshot *s, uint8_t device_id) {
+    static const struct tp_coast_cfg off = {
+        .enable = 0,
+        .friction = (uint8_t)TP_COAST_FRICTION_DEFAULT,
+        .threshold = (uint8_t)TP_COAST_THRESHOLD_DEFAULT,
+    };
+    if (!s) {
+        return off;
+    }
+    for (uint8_t d = 0; d < s->device_count && d < TP_MAX_DEVICES; d++) {
+        if (s->devices[d].device_id == device_id) {
+            return s->devices[d].coast;
+        }
+    }
+    return off;
+}
+
 /* True if a binding actually fires something (i.e. is not NONE / out of range). */
 static inline bool tp_binding_active(const struct tp_binding *b) {
     return b && b->behavior != TP_BEH_NONE && b->behavior <= TP_BEH_MAX;
@@ -205,28 +261,32 @@ static inline bool tp_binding_active(const struct tp_binding *b) {
 
 /* ---- write path (GATT/NVS): validate a wire blob then atomically publish --- */
 
-/* Apply a complete wire blob (DESIGN-trackpad-v2.md §3). Accepts BOTH version 1
- * (upgraded: discrete roles 3..6 -> ENCODER + preset pos/neg) and version 2.
- * Validates magic/version/length and clamps every field into a stack shadow,
- * then publishes via a single atomic buffer swap. Returns 0 on success, negative
- * on rejection (store unchanged). */
+/* Apply a complete wire blob (DESIGN-trackpad-v2.md §3). Accepts version 1
+ * (upgraded: discrete roles 3..6 -> ENCODER + preset pos/neg), version 2 and
+ * version 3 (v2 + the per-device coast block). Validates magic/version/length and
+ * clamps every field into a shadow, then publishes via a single atomic buffer
+ * swap. Returns 0 on success, negative on rejection (store unchanged). */
 int tp_apply_wire(const uint8_t *buf, uint16_t len);
 
 /* Encode the current live snapshot into a wire blob (for GATT READ). Always emits
- * version 2 with the gesture section present. Writes up to cap bytes, sets
- * *out_len. Returns 0 / negative on too-small cap. */
+ * version 3 with the gesture section and the per-device coast block present.
+ * Writes up to cap bytes, sets *out_len. Returns 0 / negative on too-small cap. */
 int tp_encode_wire(uint8_t *buf, uint16_t cap, uint16_t *out_len);
 
-/* v2 wire length (gesture section present) for a given device/layer count. */
+/* v3 wire length (gestures + coast present) for a given device/layer count. */
 uint16_t tp_wire_len_for(uint8_t device_count, uint8_t layer_count);
 
 /* ---- compile-time wire layout (DESIGN-trackpad-v2.md §3) ----------------- */
 #define TP_WIRE_HDR 6u     /* magic[2] version device_count layer_count flags */
-#define TP_WIRE_DEV_HDR 2u /* device_id _rsv */
-#define TP_WIRE_BIND 4u    /* behavior mods param(2 LE) */
-#define TP_WIRE_AXIS 11u   /* role dir step + pos(4) + neg(4) */
-#define TP_WIRE_GEST 16u   /* tap(4) tap2(4) hold(4) dtap(4) */
-/* v2 per-layer stride WITH the gesture section (what we always encode). */
+#define TP_WIRE_DEV_HDR 2u /* v1/v2: device_id meta */
+/* v3 device header: device_id meta + coast{enable friction threshold}. The coast
+ * set lives here, NOT in the layer block, because it is per device. */
+#define TP_WIRE_DEV_HDR_V3 5u
+#define TP_WIRE_BIND 4u  /* behavior mods param(2 LE) */
+#define TP_WIRE_AXIS 11u /* role dir step + pos(4) + neg(4) */
+#define TP_WIRE_GEST 16u /* tap(4) tap2(4) hold(4) dtap(4) */
+/* per-layer stride WITH the gesture section (what we always encode). Unchanged
+ * between v2 and v3 — v3 only grew the device header. */
 #define TP_WIRE_LAYER_V2 (TP_WIRE_AXIS * 2u + TP_WIRE_GEST) /* 38 */
 /* v1 layout (accepted on WRITE only): axis is 3B, layer is 6B. */
 #define TP_WIRE_AXIS_V1 3u
@@ -234,11 +294,16 @@ uint16_t tp_wire_len_for(uint8_t device_count, uint8_t layer_count);
 
 /* header flags */
 #define TP_FLAG_GESTURES 0x01u
+/* Informational only: set on every v3 encode so a reader that keys off flags
+ * rather than the version can still see the coast block. The LENGTH of the device
+ * header is decided by the version alone, never by this bit. */
+#define TP_FLAG_COAST 0x02u
 
-/* Compile-time upper bound on the wire size (for static reassembly buffers). */
-#define TP_WIRE_CAP                                                                                 \
-    (TP_WIRE_HDR +                                                                                  \
-     (uint32_t)TP_MAX_DEVICES * (TP_WIRE_DEV_HDR + (uint32_t)TP_MAX_LAYERS * TP_WIRE_LAYER_V2))
+/* Compile-time upper bound on the wire size (for static reassembly buffers).
+ * Sized on the v3 device header, which is the longest one we emit. */
+#define TP_WIRE_CAP                                                                                \
+    (TP_WIRE_HDR +                                                                                 \
+     (uint32_t)TP_MAX_DEVICES * (TP_WIRE_DEV_HDR_V3 + (uint32_t)TP_MAX_LAYERS * TP_WIRE_LAYER_V2))
 
 /* Persist the current live snapshot to NVS (no-op without CONFIG_SETTINGS). */
 int tp_save(void);

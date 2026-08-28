@@ -16,13 +16,20 @@
 
 LOG_MODULE_REGISTER(ztc_config, CONFIG_ZMK_TRACKBALL_CONFIG_LOG_LEVEL);
 
-/* ---- wire layout (LE, fixed header THEN variable layers[]) ---------------- */
-/* hdr(8): magic[2] version layer_count temp_target _rsv timeout[2]
- * layer(12): x{role dir speed rsv} y{role dir speed rsv} temp_enable rsv[3]  */
+/* ---- wire layout (LE, fixed header THEN variable layers[] THEN v3 trailer) --
+ * hdr(8):    magic[2] version layer_count temp_target _rsv timeout[2]
+ * layer(12): x{role dir speed rsv} y{role dir speed rsv} temp_enable rsv[3]
+ * coast(4):  enable friction threshold _rsv        (v3 only, after the layers)
+ *
+ * total(v2) = 8 + 12*ZTC_MAX_LAYERS
+ * total(v3) = 8 + 12*ZTC_MAX_LAYERS + 4
+ *
+ * The coast block is a TRAILER, not a header extension, precisely so that every
+ * v2 offset survives untouched — the app's layer decoder does not move.
+ * WRITE accepts v2 (coast left disabled) and v3; READ always emits v3. */
 #define ZTC_WIRE_MAGIC 0x7A74u
-#define ZTC_WIRE_VERSION 2u
-#define ZTC_WIRE_HDR 8u
-#define ZTC_WIRE_LAYER 12u
+#define ZTC_WIRE_VERSION_V2 2u
+#define ZTC_WIRE_VERSION_V3 3u
 
 static inline uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 static inline void wr16(uint8_t *p, uint16_t v) {
@@ -30,7 +37,12 @@ static inline void wr16(uint8_t *p, uint16_t v) {
     p[1] = (uint8_t)(v >> 8);
 }
 
-uint16_t ztc_wire_len(void) { return ZTC_WIRE_HDR + (uint16_t)ZTC_MAX_LAYERS * ZTC_WIRE_LAYER; }
+/* v2 length: header + layers, no coast trailer (accepted on WRITE only). */
+static uint16_t ztc_wire_len_v2(void) {
+    return (uint16_t)(ZTC_WIRE_HDR + (uint32_t)ZTC_MAX_LAYERS * ZTC_WIRE_LAYER);
+}
+
+uint16_t ztc_wire_len(void) { return (uint16_t)(ztc_wire_len_v2() + ZTC_WIRE_COAST); }
 
 /* ---- defaults == current static overlay behavior (fail-open baseline) ----- */
 
@@ -65,6 +77,11 @@ static void fill_defaults(struct ztc_snapshot *s) {
     }
     s->temp_target = (ZTC_MAX_LAYERS > 1) ? 1 : 0;
     s->temp_timeout_ms = 500;
+    /* Coasting is OPT-IN: the shipped default is the exact pre-v3 behavior, so a
+     * firmware update never changes how anyone's ball feels until they ask. */
+    s->coast.enable = 0;
+    s->coast.friction = (uint8_t)ZTC_COAST_FRICTION_DEFAULT;
+    s->coast.threshold = (uint8_t)ZTC_COAST_THRESHOLD_DEFAULT;
 }
 
 /* ---- double buffer ------------------------------------------------------- */
@@ -111,6 +128,17 @@ static uint16_t clamp_timeout(uint16_t t) {
     return (t > ZTC_TIMEOUT_MAX) ? (uint16_t)ZTC_TIMEOUT_MAX : t;
 }
 
+static uint8_t clamp_friction(uint8_t f) {
+    if (f < ZTC_COAST_FRICTION_MIN) {
+        return (uint8_t)ZTC_COAST_FRICTION_DEFAULT; /* 0 = "unset" => default, never 0 decay */
+    }
+    return (f > ZTC_COAST_FRICTION_MAX) ? (uint8_t)ZTC_COAST_FRICTION_MAX : f;
+}
+static uint8_t clamp_threshold(uint8_t t) {
+    /* Max is the u8 range, so only the "unset" bottom needs a decision. */
+    return (t < ZTC_COAST_THRESHOLD_MIN) ? (uint8_t)ZTC_COAST_THRESHOLD_DEFAULT : t;
+}
+
 static void decode_axis(const uint8_t *p, struct ztc_axis_cfg *a) {
     a->role = clamp_role(p[0]);
     a->direction = p[1] ? 1 : 0;
@@ -120,12 +148,23 @@ static void decode_axis(const uint8_t *p, struct ztc_axis_cfg *a) {
 /* ---- wire -> shadow (validate+clamp), then publish ----------------------- */
 
 int ztc_apply_wire(const uint8_t *buf, uint16_t len) {
-    if (!buf || len != ztc_wire_len()) {
-        LOG_WRN("ztc wire bad len %u (want %u)", len, ztc_wire_len());
+    if (!buf || len < ZTC_WIRE_HDR) {
+        LOG_WRN("ztc wire too short %u", len);
         return -EINVAL;
     }
-    if (rd16(&buf[0]) != ZTC_WIRE_MAGIC || buf[2] != ZTC_WIRE_VERSION) {
-        LOG_WRN("ztc wire bad magic/version");
+    if (rd16(&buf[0]) != ZTC_WIRE_MAGIC) {
+        LOG_WRN("ztc wire bad magic");
+        return -EINVAL;
+    }
+    const uint8_t version = buf[2];
+    const bool has_coast = (version == ZTC_WIRE_VERSION_V3);
+    if (version != ZTC_WIRE_VERSION_V2 && !has_coast) {
+        LOG_WRN("ztc wire bad version %u", version);
+        return -EINVAL;
+    }
+    const uint16_t want = has_coast ? ztc_wire_len() : ztc_wire_len_v2();
+    if (len != want) {
+        LOG_WRN("ztc wire v%u bad len %u (want %u)", version, len, want);
         return -EINVAL;
     }
     uint8_t layer_count = buf[3];
@@ -148,8 +187,15 @@ int ztc_apply_wire(const uint8_t *buf, uint16_t len) {
     sh.temp_target = (target < ZTC_MAX_LAYERS) ? target : ((ZTC_MAX_LAYERS > 1) ? 1 : 0);
     sh.temp_timeout_ms = clamp_timeout(rd16(&buf[6]));
 
+    if (has_coast) {
+        const uint8_t *cp = &buf[ztc_wire_len_v2()];
+        sh.coast.enable = cp[0] ? 1 : 0;
+        sh.coast.friction = clamp_friction(cp[1]);
+        sh.coast.threshold = clamp_threshold(cp[2]);
+    } /* else: fill_defaults already left coasting off — a v2 app can't enable it */
+
     publish(&sh);
-    LOG_INF("ztc config applied (live)");
+    LOG_INF("ztc config applied v%u (live)", version);
     return 0;
 }
 
@@ -161,7 +207,7 @@ int ztc_encode_wire(uint8_t *buf, uint16_t cap, uint16_t *out_len) {
     const struct ztc_snapshot *s = ztc_live();
     memset(buf, 0, need);
     wr16(&buf[0], ZTC_WIRE_MAGIC);
-    buf[2] = ZTC_WIRE_VERSION;
+    buf[2] = ZTC_WIRE_VERSION_V3;
     buf[3] = ZTC_MAX_LAYERS;
     buf[4] = s->temp_target;
     wr16(&buf[6], s->temp_timeout_ms);
@@ -175,6 +221,10 @@ int ztc_encode_wire(uint8_t *buf, uint16_t cap, uint16_t *out_len) {
         lp[6] = s->layers[i].y.speed_div;
         lp[8] = s->layers[i].temp_enable ? 1 : 0;
     }
+    uint8_t *cp = &buf[ztc_wire_len_v2()]; /* v3 coast trailer */
+    cp[0] = s->coast.enable;
+    cp[1] = s->coast.friction;
+    cp[2] = s->coast.threshold;
     if (out_len) {
         *out_len = need;
     }
@@ -190,7 +240,7 @@ int ztc_encode_wire(uint8_t *buf, uint16_t cap, uint16_t *out_len) {
 #define ZTC_VAL "wire"
 
 int ztc_save(void) {
-    uint8_t buf[ZTC_WIRE_HDR + ZTC_MAX_LAYERS * ZTC_WIRE_LAYER];
+    uint8_t buf[ZTC_WIRE_CAP];
     uint16_t len = 0;
     int rc = ztc_encode_wire(buf, sizeof(buf), &len);
     if (rc) {
@@ -206,8 +256,10 @@ static int ztc_settings_set(const char *name, size_t len, settings_read_cb read_
     if (!settings_name_steq(name, ZTC_VAL, &next) || next) {
         return -ENOENT;
     }
-    uint8_t buf[ZTC_WIRE_HDR + ZTC_MAX_LAYERS * ZTC_WIRE_LAYER];
-    if (len != sizeof(buf)) {
+    uint8_t buf[ZTC_WIRE_CAP];
+    /* A blob written by a pre-v3 firmware is one coast trailer shorter; accept
+     * both lengths so an in-place update keeps the user's layer config. */
+    if (len != ztc_wire_len() && len != ztc_wire_len_v2()) {
         LOG_WRN("ztc nvs bad size %u; keeping defaults", (unsigned)len);
         return 0; /* keep defaults, do not fail boot */
     }
@@ -233,3 +285,4 @@ int ztc_save(void) { return 0; }
 /* compile-time wire layout guarantees */
 BUILD_ASSERT(ZTC_WIRE_HDR == 8, "wire header must be 8 bytes");
 BUILD_ASSERT(ZTC_WIRE_LAYER == 12, "wire layer must be 12 bytes");
+BUILD_ASSERT(ZTC_WIRE_COAST == 4, "v3 coast trailer must be 4 bytes");

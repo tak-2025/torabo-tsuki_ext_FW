@@ -8,16 +8,22 @@
  *
  * Wire layout (LE, fixed header THEN device blocks — matches tpConfigV2.ts):
  *   hdr(6): magic[2]=0x7470 version device_count layer_count flags
- *     flags bit0 = gesture section present
- *   per device: device_id _rsv (2B), then layer_count layers:
+ *     flags bit0 = gesture section present, bit1 = coast block present (v3)
+ *   per device: device_id meta (2B, v1/v2)
+ *               device_id meta coast_enable coast_friction coast_threshold
+ *                              (5B, v3)
+ *               then layer_count layers:
  *     axis x { role dir step pos(4) neg(4) }   (11B)
  *     axis y { same }                          (11B)
  *     gesture { tap(4) tap2(4) hold(4) dtap(4) } (16B, only if flags bit0)
  *   binding(4) = behavior mods param(2 LE)
  *   total(v2) = 6 + device_count*(2 + layer_count*(22 [+16 if gestures]))
+ *   total(v3) = 6 + device_count*(5 + layer_count*(22 [+16 if gestures]))
  *
  * WRITE accepts version 1 (old fixed-role wire, upgraded to ENCODER + preset
- * pos/neg) AND version 2; READ always emits version 2 with the gesture section.
+ * pos/neg), version 2 and version 3; READ always emits version 3 with both the
+ * gesture section and the coast block. A v1/v2 write leaves coasting DISABLED,
+ * so an app that has not learned v3 yet cannot silently turn it on.
  */
 
 #include <zephyr/kernel.h>
@@ -32,6 +38,7 @@ LOG_MODULE_REGISTER(tp_config, CONFIG_ZMK_TRACKPAD_CONFIG_LOG_LEVEL);
 #define TP_WIRE_MAGIC 0x7470u /* "tp" */
 #define TP_WIRE_VERSION_V1 1u
 #define TP_WIRE_VERSION_V2 2u
+#define TP_WIRE_VERSION_V3 3u
 
 /* HID usage ids / mods for the v1->v2 preset upgrade (must match tpConfigV2.ts
  * presetForV1Role). Raw usage ids; the page is applied when the binding is
@@ -53,16 +60,19 @@ static inline void wr16(uint8_t *p, uint16_t v) {
 }
 
 uint16_t tp_wire_len_for(uint8_t device_count, uint8_t layer_count) {
-    /* v2 length WITH the gesture section (what we always encode). */
+    /* v3 length WITH the gesture section and the coast block (what we encode). */
     return (uint16_t)(TP_WIRE_HDR +
                       (uint32_t)device_count *
-                          (TP_WIRE_DEV_HDR + (uint32_t)layer_count * TP_WIRE_LAYER_V2));
+                          (TP_WIRE_DEV_HDR_V3 + (uint32_t)layer_count * TP_WIRE_LAYER_V2));
 }
 
-static uint16_t tp_wire_len_v2(uint8_t device_count, uint8_t layer_count, bool has_gestures) {
+/* v2/v3 share the layer stride; only the device header differs, and it is chosen
+ * by the VERSION, never by the flags byte. */
+static uint16_t tp_wire_len_vn(uint8_t device_count, uint8_t layer_count, bool has_gestures,
+                               uint8_t dev_hdr) {
     uint32_t stride = TP_WIRE_AXIS * 2u + (has_gestures ? TP_WIRE_GEST : 0u);
-    return (uint16_t)(TP_WIRE_HDR + (uint32_t)device_count * (TP_WIRE_DEV_HDR +
-                                                              (uint32_t)layer_count * stride));
+    return (uint16_t)(TP_WIRE_HDR +
+                      (uint32_t)device_count * (dev_hdr + (uint32_t)layer_count * stride));
 }
 
 static uint16_t tp_wire_len_v1(uint8_t device_count, uint8_t layer_count) {
@@ -99,6 +109,11 @@ static uint8_t meta_for(uint8_t device_id) {
 static void fill_device_defaults(struct tp_device_cfg *dev, uint8_t device_id) {
     dev->device_id = device_id;
     dev->meta = meta_for(device_id);
+    /* Coasting is OPT-IN: the shipped default is the exact pre-v3 behavior, so a
+     * firmware update never changes how anyone's pad feels until they ask. */
+    dev->coast.enable = 0;
+    dev->coast.friction = (uint8_t)TP_COAST_FRICTION_DEFAULT;
+    dev->coast.threshold = (uint8_t)TP_COAST_THRESHOLD_DEFAULT;
     /* every layer defaults to plain move passthrough (safe); gestures stay NONE */
     for (int i = 0; i < TP_MAX_LAYERS; i++) {
         dev->layers[i].x = (struct tp_axis_cfg)MOVE_PT;
@@ -180,6 +195,23 @@ static uint8_t clamp_step(uint8_t s) {
     }
     return (s > TP_STEP_MAX) ? (uint8_t)TP_STEP_MAX : s;
 }
+static uint8_t clamp_friction(uint8_t f) {
+    if (f < TP_COAST_FRICTION_MIN) {
+        return (uint8_t)TP_COAST_FRICTION_DEFAULT; /* 0 = "unset" => default, never 0 decay */
+    }
+    return (f > TP_COAST_FRICTION_MAX) ? (uint8_t)TP_COAST_FRICTION_MAX : f;
+}
+static uint8_t clamp_threshold(uint8_t t) {
+    /* Max is the u8 range, so only the "unset" bottom needs a decision. */
+    return (t < TP_COAST_THRESHOLD_MIN) ? (uint8_t)TP_COAST_THRESHOLD_DEFAULT : t;
+}
+
+/* v3 device-header tail: coast_enable coast_friction coast_threshold. */
+static void decode_coast(const uint8_t *p, struct tp_coast_cfg *c) {
+    c->enable = p[0] ? 1 : 0;
+    c->friction = clamp_friction(p[1]);
+    c->threshold = clamp_threshold(p[2]);
+}
 
 static void decode_bind(const uint8_t *p, struct tp_binding *b) {
     uint8_t beh = p[0];
@@ -241,12 +273,16 @@ static void decode_axis_v1(const uint8_t *p, struct tp_axis_cfg *a) {
 
 /* ---- wire -> shadow (validate+clamp), then publish ----------------------- */
 
-static int apply_v2(const uint8_t *buf, uint16_t len, uint8_t device_count, uint8_t layer_count,
-                    uint8_t flags) {
+/* v2 and v3 differ only in the device header (v3 carries the coast block), so one
+ * decoder serves both: `has_coast` says whether to read it, and the defaults it
+ * would otherwise keep are "disabled". */
+static int apply_v2_v3(const uint8_t *buf, uint16_t len, uint8_t device_count, uint8_t layer_count,
+                       uint8_t flags, bool has_coast) {
     bool has_gest = (flags & TP_FLAG_GESTURES) != 0;
-    uint16_t want = tp_wire_len_v2(device_count, layer_count, has_gest);
+    const uint8_t dev_hdr = has_coast ? (uint8_t)TP_WIRE_DEV_HDR_V3 : (uint8_t)TP_WIRE_DEV_HDR;
+    uint16_t want = tp_wire_len_vn(device_count, layer_count, has_gest, dev_hdr);
     if (len != want) {
-        LOG_WRN("tp wire v2 bad len %u (want %u)", len, want);
+        LOG_WRN("tp wire v%d bad len %u (want %u)", has_coast ? 3 : 2, len, want);
         return -EINVAL;
     }
 
@@ -257,10 +293,14 @@ static int apply_v2(const uint8_t *buf, uint16_t len, uint8_t device_count, uint
     uint32_t o = TP_WIRE_HDR;
     for (uint8_t d = 0; d < device_count; d++) {
         uint8_t dev_id = buf[o];
-        o += TP_WIRE_DEV_HDR;
         /* rebaseline this device's layers to defaults for its (possibly new) id,
-         * so layers beyond layer_count stay safe. */
+         * so layers beyond layer_count stay safe. Do it BEFORE decoding coast so
+         * the decoded values are not overwritten by the defaults. */
         fill_device_defaults(&sh->devices[d], dev_id);
+        if (has_coast) {
+            decode_coast(&buf[o + 2], &sh->devices[d].coast);
+        }
+        o += dev_hdr;
         for (uint8_t i = 0; i < layer_count; i++) {
             struct tp_layer_cfg *l = &sh->devices[d].layers[i];
             decode_axis_v2(&buf[o], &l->x);
@@ -277,8 +317,8 @@ static int apply_v2(const uint8_t *buf, uint16_t len, uint8_t device_count, uint
     }
 
     publish(sh);
-    LOG_INF("tp config applied v2 (live): %u dev, %u layer, gestures=%d", device_count, layer_count,
-            (int)has_gest);
+    LOG_INF("tp config applied v%d (live): %u dev, %u layer, gestures=%d", has_coast ? 3 : 2,
+            device_count, layer_count, (int)has_gest);
     return 0;
 }
 
@@ -330,8 +370,11 @@ int tp_apply_wire(const uint8_t *buf, uint16_t len) {
         return -EINVAL;
     }
 
+    if (version == TP_WIRE_VERSION_V3) {
+        return apply_v2_v3(buf, len, device_count, layer_count, flags, true);
+    }
     if (version == TP_WIRE_VERSION_V2) {
-        return apply_v2(buf, len, device_count, layer_count, flags);
+        return apply_v2_v3(buf, len, device_count, layer_count, flags, false);
     }
     if (version == TP_WIRE_VERSION_V1) {
         return apply_v1(buf, len, device_count, layer_count);
@@ -357,22 +400,25 @@ static void encode_axis(uint8_t *p, const struct tp_axis_cfg *a) {
 int tp_encode_wire(uint8_t *buf, uint16_t cap, uint16_t *out_len) {
     const struct tp_snapshot *s = tp_live();
     uint8_t device_count = (s->device_count <= TP_MAX_DEVICES) ? s->device_count : TP_MAX_DEVICES;
-    uint16_t need = tp_wire_len_for(device_count, TP_MAX_LAYERS); /* v2, gestures present */
+    uint16_t need = tp_wire_len_for(device_count, TP_MAX_LAYERS); /* v3: gestures + coast */
     if (!buf || cap < need) {
         return -ENOMEM;
     }
     memset(buf, 0, need);
     wr16(&buf[0], TP_WIRE_MAGIC);
-    buf[2] = TP_WIRE_VERSION_V2;
+    buf[2] = TP_WIRE_VERSION_V3;
     buf[3] = device_count;
     buf[4] = TP_MAX_LAYERS;
-    buf[5] = TP_FLAG_GESTURES;
+    buf[5] = TP_FLAG_GESTURES | TP_FLAG_COAST;
 
     uint32_t o = TP_WIRE_HDR;
     for (uint8_t d = 0; d < device_count; d++) {
         buf[o] = s->devices[d].device_id;
         buf[o + 1] = s->devices[d].meta; /* formerly _rsv; identity for the app */
-        o += TP_WIRE_DEV_HDR;
+        buf[o + 2] = s->devices[d].coast.enable;
+        buf[o + 3] = s->devices[d].coast.friction;
+        buf[o + 4] = s->devices[d].coast.threshold;
+        o += TP_WIRE_DEV_HDR_V3;
         for (uint8_t i = 0; i < TP_MAX_LAYERS; i++) {
             const struct tp_layer_cfg *l = &s->devices[d].layers[i];
             encode_axis(&buf[o], &l->x);
@@ -449,6 +495,7 @@ int tp_save(void) { return 0; }
 /* compile-time wire layout guarantees (DESIGN-trackpad-v2.md §3) */
 BUILD_ASSERT(TP_WIRE_HDR == 6, "wire header must be 6 bytes");
 BUILD_ASSERT(TP_WIRE_DEV_HDR == 2, "device header must be 2 bytes");
+BUILD_ASSERT(TP_WIRE_DEV_HDR_V3 == 5, "v3 device header must be 5 bytes (2 + coast 3)");
 BUILD_ASSERT(TP_WIRE_BIND == 4, "binding must be 4 bytes");
 BUILD_ASSERT(TP_WIRE_AXIS == 11, "wire axis must be 11 bytes");
 BUILD_ASSERT(TP_WIRE_GEST == 16, "wire gesture must be 16 bytes");

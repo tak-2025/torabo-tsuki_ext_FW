@@ -97,7 +97,12 @@ static uint16_t tp_expected_len(const uint8_t *hdr) {
         return 0;
     }
     uint32_t stride;
-    if (version == 2u) {
+    uint32_t dev_hdr = TP_WIRE_DEV_HDR;
+    if (version == 3u) {
+        /* v3 = v2 layers with a 5B device header (coast block). */
+        stride = TP_WIRE_AXIS * 2u + ((flags & TP_FLAG_GESTURES) ? TP_WIRE_GEST : 0u);
+        dev_hdr = TP_WIRE_DEV_HDR_V3;
+    } else if (version == 2u) {
         stride = TP_WIRE_AXIS * 2u + ((flags & TP_FLAG_GESTURES) ? TP_WIRE_GEST : 0u);
     } else if (version == 1u) {
         stride = TP_WIRE_LAYER_V1;
@@ -105,7 +110,7 @@ static uint16_t tp_expected_len(const uint8_t *hdr) {
         return 0; /* unknown version: not stageable */
     }
     return (uint16_t)(TP_WIRE_HDR +
-                      (uint32_t)device_count * (TP_WIRE_DEV_HDR + (uint32_t)layer_count * stride));
+                      (uint32_t)device_count * (dev_hdr + (uint32_t)layer_count * stride));
 }
 
 static ssize_t tp_write_cfg(struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf,
