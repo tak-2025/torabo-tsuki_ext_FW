@@ -1,0 +1,98 @@
+menuconfig ZMK_TIMING_CONFIG
+    bool "Runtime-adjustable hold-tap and debounce timing (torabo-tsuki)"
+    help
+      Make the numbers that decide how a key FEELS editable at runtime instead of
+      at build time: the hold-tap parameters of the two stock nodes &mt (mod_tap)
+      and &lt (layer_tap), and the matrix kscan debounce windows.
+
+      Tuning these is trial and error — a tapping term is either right for your
+      hands or it isn't, and you only find out by typing — so a reflash per
+      attempt is the wrong loop. This makes it a slider.
+
+      Needs the matching hooks in the zmk fork (<zmk/torabo_timing.h>). Those are
+      __weak and default to stock behavior, so a fork without this module built
+      in behaves exactly as before; this module supplies the strong definitions.
+
+      Enable on the CENTRAL: this is the half the app talks to, and hold-taps are
+      decided there. The debounce windows reach the other half too, if both are
+      built with ZMK_SPLIT_BLE_DEBOUNCE_SYNC and the peripheral with
+      ZMK_TIMING_SPLIT_PERIPHERAL (the torabo-timing-split snippet).
+
+if ZMK_TIMING_CONFIG
+
+config ZMK_TIMING_CONFIG_BLE
+    bool "Expose the timing settings over a BLE GATT service"
+    depends on BT
+    default y
+    help
+      Custom encrypted GATT service (e1f4b000) to read/write the settings live.
+      The wire is a fixed 96 bytes: it fits a single ATT write once the MTU has
+      been negotiated up (the torabo-combos / torabo-trackball snippets already
+      raise it), and the write path reassembles chunks when it has not.
+
+config ZMK_TIMING_CONFIG_TUNNEL
+    bool "Expose the timing settings over the Studio RPC torabo tunnel"
+    depends on ZMK_STUDIO_TORABO_TUNNEL
+    default y
+    help
+      Register the settings with the torabo tunnel so they are reachable over
+      whichever transport Studio RPC is using (USB serial included).
+      Carries the exact same 96-byte wire blob as the GATT service (feature id
+      0x10), and coexists with it.
+
+config ZMK_TIMING_CONFIG_DEBOUNCE_PRESS_MS
+    int "Devicetree debounce-press-ms of the matrix kscan"
+    default 5
+    range 1 100
+    help
+      What the kscan node's debounce-press-ms actually is in this build. The
+      driver's devicetree config is private to it, so there is no way to read the
+      value back; this is how a READ can answer with the true default before the
+      user has written anything, and what "reset to default" in the app means.
+
+      KEEP IN SYNC with the shield's kscan node. Getting it wrong costs nothing
+      at runtime (the firmware still runs on the real devicetree value until a
+      write happens) but the app will show the wrong starting number.
+
+config ZMK_TIMING_CONFIG_DEBOUNCE_RELEASE_MS
+    int "Devicetree debounce-release-ms of the matrix kscan"
+    default 5
+    range 1 100
+    help
+      See ZMK_TIMING_CONFIG_DEBOUNCE_PRESS_MS.
+
+module = ZMK_TIMING_CONFIG
+module-str = ZMK Timing Config
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # ZMK_TIMING_CONFIG
+
+menuconfig ZMK_TIMING_SPLIT_PERIPHERAL
+    bool "Apply the debounce windows pushed by the split central (peripheral)"
+    depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL
+    depends on !ZMK_TIMING_CONFIG
+    help
+      The peripheral half of the debounce settings. Each half scans its own
+      matrix, so a value the app writes to the central would otherwise stop
+      there; this takes the two bytes the central pushes over the split link and
+      applies them to this half's kscan from the next scan.
+
+      Needs CONFIG_ZMK_SPLIT_BLE_DEBOUNCE_SYNC on BOTH halves — that is the zmk
+      fork symbol that adds the characteristic here and the writer there. The
+      torabo-timing-split snippet sets both.
+
+      Nothing is stored: the central re-sends on every connect, so there is one
+      source of truth. For the second or two before the link is up, this half
+      scans on its devicetree values.
+
+      Deliberately NOT for the central — ZMK_TIMING_CONFIG owns the same seam
+      (zmk_torabo_debounce_effective) there, with the wire and the NVS store
+      behind it.
+
+if ZMK_TIMING_SPLIT_PERIPHERAL
+
+module = ZMK_TIMING_SPLIT_PERIPHERAL
+module-str = ZMK Timing Split Peripheral
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # ZMK_TIMING_SPLIT_PERIPHERAL

@@ -8,6 +8,11 @@
 #   CONFIG_ZMK_TRACKBALL_CONFIG=y    -> trackball settings + auto mouse (temp) layer
 #   CONFIG_TORABO_RESERVED_LAYERS=N  -> inject N reserved layers (with the
 #                                       torabo-reserved-layers snippet)
+#   CONFIG_ZMK_TIMING_CONFIG=y       -> runtime hold-tap (&mt/&lt) + kscan
+#                                       debounce timing (CENTRAL)
+#   CONFIG_ZMK_TIMING_SPLIT_PERIPHERAL=y
+#                                    -> receive the debounce windows the central
+#                                       pushes over the split link (PERIPHERAL)
 #
 # All default off; the parent ZMK config turns on what it wants per shield.
 
@@ -21,3 +26,4 @@ rsource "caps/Kconfig"
 rsource "led/Kconfig"
 rsource "status_led_ext/Kconfig"
 rsource "live_feed/Kconfig"
+rsource "timing/Kconfig"

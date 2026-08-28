@@ -43,12 +43,14 @@ west が Malformed manifest で落ちます）。この fork の `app/west.yml` 
 | `torabo-encoder-live` | 機能 | central | ロータリーエンコーダのライブ設定（回転 behavior＋ボタン processor） | ボタン配線スニペットと併用 |
 | `torabo-led-live` | 機能 | central | 拡張LED をルール表で左右別に設定。両LEDを制御し peripheral 分を split で押し込む | `torabo-status-led-ext` と**排他** |
 | `torabo-status-led-ext` | 機能（固定・旧式） | central | 固定動作LED（プロファイル色＋切断中の赤）。`torabo-led-live` の前身 | `torabo-led-live` と**排他** |
+| `torabo-timing` | 機能 | central | `&mt`/`&lt` の hold-tap パラメータと kscan デバウンスをライブ調整 | zmk fork の `<zmk/torabo_timing.h>` 必須。相手側に `torabo-timing-split` |
+| `torabo-timing-split` | 機能 | peripheral | central が送るデバウンス値を自分の kscan に反映（受け側だけ） | 相手側に `torabo-timing` |
 | `torabo-reserved-layers` | 機能 | central | 空の予約レイヤーを N 枚追加（Studio が実行時に確保）。無いと LAYER「+」が押せない | 枚数は build.yaml の `cmake-args` |
 | `torabo-caps` | 機能（裏方） | central | 機能記述子。FW が構成を自己申告し、アプリがタブを出し分ける | — |
 | `torabo-live-feed` | 機能（裏方） | central | 押下キー/レイヤーを BLE NOTIFY で配信（Torabo-Float 用オーバーレイ） | — |
 | `torabo-rpc-tunnel` | 機能（裏方） | central | 独自設定を Studio RPC にも流す汎用トンネル。**USB 接続でも全タブが使える** | — |
 | `input-trackpad-ext` | 配線 | パッド側 | 拡張トラックパッドの I2C1 土台（IQS7211E＋スクロール慣性） | — |
-| `input-trackpad-ext-diy` | 配線 | パッド側 | 上記の DIY 版（別 init シンボル）。`input-trackpad-ext` の上に重ねる | `input-trackpad-ext` |
+| `input-trackpad-ext-diy` | 配線 | パッド側 | 上記の DIY 版（別 init シンボル）。`input-trackpad-ext` の上に重ねる。firmware-builder からは生成されません（ビルダーは公式 init のみ対応） | `input-trackpad-ext` |
 | `input-trackpad-ext-split` | 配線 | peripheral | 拡張パッドを peripheral 側に繋ぎ split で送る土台 | — |
 | `input-trackpad-ext-split-reg1` | 配線 | peripheral | 上記の split レジスタ1版 | — |
 | `input-split-listener-reg1` | 配線 | central | peripheral の**2個目**の pointing（reg=1）を受ける。reg=0 版と併用 | 相手に `input-trackpad-ext-split-reg1` |
@@ -68,7 +70,7 @@ west が Malformed manifest で落ちます）。この fork の `app/west.yml` 
 
 ## 2. 機能スニペット
 
-BLE でライブ編集する機能は、それぞれ暗号化 GATT サービスを1本持ちます（caps=`e1f4a000` / trackpad=`e1f4ac00` / encoder=`e1f4ad00` / led=`e1f4ae00` / live-feed=`e1f4af00`。macros/combos/trackball も専用サービスあり）。
+BLE でライブ編集する機能は、それぞれ暗号化 GATT サービスを1本持ちます（caps=`e1f4a000` / trackpad=`e1f4ac00` / encoder=`e1f4ad00` / led=`e1f4ae00` / live-feed=`e1f4af00` / timing=`e1f4b000`。macros/combos/trackball も専用サービスあり）。
 
 - **`torabo-macros`** — `&dmac N` で呼ぶ NVS 保存マクロ。中身は Studio の「マクロ」タブから BLE 書き込み（再フラッシュ不要）。keymap に `&dmac 0…19` を置く必要あり。
 - **`torabo-combos`** — キー位置の同時押しで behavior を発火するコンボを NVS 保存＋ライブ編集。位置コンボの唯一の所有者なので、keymap に `zmk,combos` ノードを置かないこと（二重所有になる）。
@@ -79,6 +81,8 @@ BLE でライブ編集する機能は、それぞれ暗号化 GATT サービス�
 - **`torabo-encoder-live`** — ロータリーエンコーダのレイヤーごとの CW/CCW/押し込みをライブ割当。回転は sensor 経路・ボタンは input 経路に乗るため keymap 編集は不要。**ボタン配線スニペットと必ず併用**（§4）。
 - **`torabo-led-live`** — 拡張LED を「Xが起きたら色C・パターンP」のルール表で左右別に設定。central が全ルールを保持し、自分のLEDを駆動しつつ peripheral 分を split で押し込む。`CONFIG_ZMK_HID_INDICATORS` も有効化（Caps Lock 表示用）。
 - **`torabo-status-led-ext`** — 旧式の固定動作LED（プロファイル切替の色フラッシュ＋相方切断中の赤点灯）。`torabo-led-live` の前身で、**同時使用不可**（同じ GPIO を奪い合う）。
+- **`torabo-timing`** — キーの「効き」を決める数値をライブ調整。`&mt`（mod_tap）と `&lt`（layer_tap）の tapping-term / flavor / quick-tap / require-prior-idle と positional 系（hold-trigger-key-positions ほか）、および matrix kscan のデバウンス（press/release）。設定は**ノード単位**なので、`&mt` を使う全キーにまとめて効きます。tak-2025/zmk fork の `<zmk/torabo_timing.h>` フック（`__weak`＝既定は従来動作）に強実装を与える形なので、このスニペットを外せば挙動は完全に元通り。デバウンスは相手側に **`torabo-timing-split`** を付ければ左右両方に効きます（付けない場合は central 側のみ）。
+- **`torabo-timing-split`** — `torabo-timing` の相方で、**peripheral 行に付けます**。キースキャンは各半身がローカルに回すため、これが無いと central に書いたデバウンス値は反対側に届きません。受け側だけの薄いスニペットで、保存も設定画面も持ちません（central が接続のたびに送り直すので、正は常に1つ）。リンクが繋がるまでの数秒だけ、この半身は devicetree の値で走ります。
 - **`torabo-reserved-layers`** — 空の予約レイヤーを N 枚（1〜10、既定10）追加。ZMK Studio が実行時に `add_layer` で確保できる空き枠で、**これが無いと Studio の LAYER「+」が押せません**。枚数は `build.yaml` で指定します:
   ```yaml
     - board: bmp_boost
@@ -104,6 +108,7 @@ BLE でライブ編集する機能は、それぞれ暗号化 GATT サービス�
 ### トラックパッドの土台
 - **`input-trackpad-ext`** — 拡張トラックパッド（IQS7211E）を I2C1（SDA P0.17 / SCL P0.21）で接続。スクロール慣性込み。
 - **`input-trackpad-ext-diy`** — 上記の DIY 版（別 init シンボルを使う）。`input-trackpad-ext` の上に重ねる。
+  firmware-builder からは生成されません（ビルダーは公式 init のみ対応。使う場合は手で `build.yaml` に足してください）。
 - **`input-trackpad-ext-split` / `-split-reg1`** — 拡張パッドを peripheral 側に繋ぎ split で central へ送る土台。
 
 ### エンコーダのボタン配線
