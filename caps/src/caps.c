@@ -35,6 +35,14 @@ static uint16_t led_caps_bits(void) {
     return c;
 }
 
+static uint16_t timing_caps_bits(void) {
+    uint16_t c = 0;
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_DEBOUNCE_SYNC)
+    c |= TORABO_CAPS_TIMING_SPLIT_DEBOUNCE;
+#endif
+    return c;
+}
+
 /* One entry per feature that is actually compiled into THIS build. The wire
  * version is bumped by whoever changes that feature's wire — the app compares it
  * against what it knows how to speak. */
@@ -42,7 +50,10 @@ static uint8_t build_features(struct feat_entry *out) {
     uint8_t n = 0;
 
 #if IS_ENABLED(CONFIG_ZMK_TRACKBALL_CONFIG)
-    out[n++] = (struct feat_entry){TORABO_FEAT_TRACKBALL, 1, 0};
+    /* wire v3 = the v2 layer array plus the 4B inertial-scroll trailer. (The
+     * blob has carried version byte 2 since the v2 rework; the 1 reported here
+     * before was stale, and is corrected along with the bump.) */
+    out[n++] = (struct feat_entry){TORABO_FEAT_TRACKBALL, 3, TORABO_CAPS_ZTC_COAST};
 #endif
 #if IS_ENABLED(CONFIG_ZMK_DYNAMIC_KEYMAP)
     out[n++] = (struct feat_entry){TORABO_FEAT_MACROS, 1, 0};
@@ -51,8 +62,9 @@ static uint8_t build_features(struct feat_entry *out) {
     out[n++] = (struct feat_entry){TORABO_FEAT_COMBOS, 1, 0};
 #endif
 #if IS_ENABLED(CONFIG_ZMK_TRACKPAD_CONFIG)
-    /* wire v2 = the gesture/encoder-role wire the app speaks today */
-    out[n++] = (struct feat_entry){TORABO_FEAT_TRACKPAD, 2, 0};
+    /* wire v3 = the v2 gesture/encoder-role wire with the per-device
+     * inertial-scroll block added to each device header. */
+    out[n++] = (struct feat_entry){TORABO_FEAT_TRACKPAD, 3, TORABO_CAPS_TP_COAST};
 #endif
 #if IS_ENABLED(CONFIG_ZMK_ENCODER_CONFIG)
     out[n++] = (struct feat_entry){TORABO_FEAT_ENCODER, 1, 0};
@@ -76,6 +88,12 @@ static uint8_t build_features(struct feat_entry *out) {
      * are unchanged, so their own wire_ver above still governs what the app sends;
      * this entry only says "the tunnel exists", i.e. USB can reach all of them. */
     out[n++] = (struct feat_entry){TORABO_FEAT_RPC_TUNNEL, 1, TORABO_CAPS_TUNNEL_NOTIFY};
+#endif
+#if IS_ENABLED(CONFIG_ZMK_TIMING_CONFIG)
+    /* wire v1 = the fixed 96 B hold-tap + debounce blob (DESIGN-timing.md). The
+     * split propagation of the debounce windows moves the same two bytes further,
+     * so it is a caps bit rather than a wire bump. */
+    out[n++] = (struct feat_entry){TORABO_FEAT_TIMING, 1, timing_caps_bits()};
 #endif
 
     return n;
@@ -116,7 +134,8 @@ int torabo_caps_encode(uint8_t *buf, uint16_t cap, uint16_t *out_len) {
 /* ---- GATT ----------------------------------------------------------------
  * Read-only: this describes the build, so there is nothing for the app to write.
  * UUID e1f4a000, ahead of the per-feature services (trackball e1f4a900, macros
- * e1f4aa00, combos e1f4ab00, trackpad e1f4ac00, encoder e1f4ad00, led e1f4ae00). */
+ * e1f4aa00, combos e1f4ab00, trackpad e1f4ac00, encoder e1f4ad00, led e1f4ae00,
+ * live_feed e1f4af00, timing e1f4b000). */
 
 #if IS_ENABLED(CONFIG_TORABO_CAPS_BLE)
 

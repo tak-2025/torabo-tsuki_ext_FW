@@ -42,6 +42,7 @@ enum torabo_feature_id {
     TORABO_FEAT_RESERVED_LAYERS = 7,
     TORABO_FEAT_LIVE_FEED = 8,
     TORABO_FEAT_RPC_TUNNEL = 9,
+    TORABO_FEAT_TIMING = 10,
 };
 
 /*
@@ -56,6 +57,16 @@ enum torabo_feature_id {
 
 /* TORABO_FEAT_TRACKPAD: how many pads the wire carries. */
 #define TORABO_CAPS_TP_DEVICE_MASK 0x000f
+/* COAST = this firmware has the per-device inertial-scroll ("momentum") engine
+ * and its wire carries the three coast bytes per device. Implied by wire v3, but
+ * stated separately so the app can gate the UI on a capability rather than on a
+ * version comparison. Bit 4 keeps clear of the device-count mask above. */
+#define TORABO_CAPS_TP_COAST 0x0010
+
+/* TORABO_FEAT_TRACKBALL: COAST = inertial scroll for the ball (wire v3 trailer).
+ * Independent numbering per feature id, so 0x0001 here is unrelated to the
+ * identically-numbered bit under TORABO_FEAT_TIMING below. */
+#define TORABO_CAPS_ZTC_COAST 0x0001
 
 /* TORABO_FEAT_RESERVED_LAYERS: how many reserved layers were injected. */
 #define TORABO_CAPS_LAYERS_MASK 0x00ff
@@ -71,17 +82,27 @@ enum torabo_feature_id {
  * The app needs this to know it can talk to a USB-connected keyboard at all. */
 #define TORABO_CAPS_TUNNEL_NOTIFY 0x0001 /* SUBSCRIBE/UNSUBSCRIBE + pushes work */
 
+/* TORABO_FEAT_TIMING: SPLIT_DEBOUNCE = this central carries the debounce windows
+ * across the split link, so they reach BOTH halves' key scanning rather than only
+ * the central's. The wire is unchanged (still v1) — the same two bytes simply go
+ * further — so this is a caps bit, not a version bump.
+ *
+ * It reports how the CENTRAL was built, which is all it can see; the peripheral
+ * needs the matching torabo-timing-split snippet for the bytes to land. Both
+ * halves come out of one build.yaml, so in practice they agree. */
+#define TORABO_CAPS_TIMING_SPLIT_DEBOUNCE 0x0001
+
 /*
  * wire:
  *   header (8B): magic u16 | desc_ver u8 | fw_major u8 | fw_minor u8 |
  *                fw_patch u8 | feature_count u8 | _rsv u8
  *   per feature (4B): id u8 | wire_ver u8 | caps u16
  *
- * 8 + 9*4 = 44 B at most — a single read.
+ * 8 + 10*4 = 48 B at most — a single read.
  */
 #define TORABO_CAPS_HDR 8
 #define TORABO_CAPS_FEAT 4
-#define TORABO_CAPS_MAX_FEATURES 9
+#define TORABO_CAPS_MAX_FEATURES 10
 #define TORABO_CAPS_WIRE_CAP (TORABO_CAPS_HDR + TORABO_CAPS_MAX_FEATURES * TORABO_CAPS_FEAT)
 
 int torabo_caps_encode(uint8_t *buf, uint16_t cap, uint16_t *out_len);
