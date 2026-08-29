@@ -105,8 +105,8 @@
         <div class="field"><span>拡張基盤</span>
           <select class="ext-sel" data-side="left" title="左 拡張基盤">
             <option value="none">なし</option>
-            <option value="fpc">FPCのみ</option>
-            <option value="led">FPC+LED</option>
+            <option value="fpc">LEDなし</option>
+            <option value="led">LEDあり</option>
           </select></div>
         <div class="field indent row-extdev" data-side="left"><span>└ 拡張FFC</span>
           <select class="extdev-sel" data-side="left" title="左 拡張FFC">
@@ -134,8 +134,8 @@
         <div class="field"><span>拡張基盤</span>
           <select class="ext-sel" data-side="right" title="右 拡張基盤">
             <option value="none">なし</option>
-            <option value="fpc">FPCのみ</option>
-            <option value="led">FPC+LED</option>
+            <option value="fpc">LEDなし</option>
+            <option value="led">LEDあり</option>
           </select></div>
         <div class="field indent row-extdev" data-side="right"><span>└ 拡張FFC</span>
           <select class="extdev-sel" data-side="right" title="右 拡張FFC">
@@ -535,7 +535,7 @@ function genConf(model){
   if (state.features.layers && state.features.layersN>0) lines.push(`CONFIG_TORABO_RESERVED_LAYERS=${state.features.layersN}`);
   // 拡張LED: どちらの半分に「実際に光るLED」があるかを FW に教える。
   // FW はこれを capability として Studio に申告し、Studio は実在する側だけ出す。
-  // 光る条件 = FPC+LED基盤 ＋ 同じ側に拡張パッド（アノードがその電源レールに乗るため）。
+  // 光る条件 = LEDあり基盤 ＋ 同じ側に拡張パッド（アノードがその電源レールに乗るため）。
   const ledOn = side => state.sides[side].ext==='led' && state.sides[side].useLed
                         && sideDevices(side).ext==='pad';
   const liveLed = state.sides[model.central].ledMode==='live' && (ledOn('left') || ledOn('right'));
