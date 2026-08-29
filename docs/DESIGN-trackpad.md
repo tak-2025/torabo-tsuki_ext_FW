@@ -68,9 +68,9 @@ device_count 回くり返し:
 
 ## 5. アプリ（Torabo-Studio）設計
 
-既存の「機能ごとに独自GATT＋専用タブ」パターン（[MainPanels.tsx](../../torabo-studio/src/MainPanels.tsx)）を踏襲：
-- `src/trackpad/tpConfig.ts` … §3 の decode/encode（[ztcConfig.ts](../../torabo-studio/src/trackball/ztcConfig.ts) が雛形）
-- `src-tauri/src/transport/trackpad.rs` … [trackball.rs](../../torabo-studio/src-tauri/src/transport/trackball.rs) 複製・UUID差替 → `main.rs` の `generate_handler!` 登録
+既存の「機能ごとに独自GATT＋専用タブ」パターン（[MainPanels.tsx](https://github.com/tak-2025/Torabo-Studio/blob/main/src/MainPanels.tsx)）を踏襲：
+- `src/trackpad/tpConfig.ts` … §3 の decode/encode（[ztcConfig.ts](https://github.com/tak-2025/Torabo-Studio/blob/main/src/trackball/ztcConfig.ts) が雛形）
+- `src-tauri/src/transport/trackpad.rs` … [trackball.rs](https://github.com/tak-2025/Torabo-Studio/blob/main/src-tauri/src/transport/trackball.rs) 複製・UUID差替 → `main.rs` の `generate_handler!` 登録
 - `src/tauri/trackpad.ts` … invoke ラッパ
 - `src/trackpad/TrackpadSettings.tsx` … **デバイス選択（左/右）＋レイヤー行に役割ドロップダウン**（§1）＋向き＋step。レイヤー数は RPC `keymap.getKeymap` から取得
 - `MainPanels.tsx` TABS ＋ `i18n/messages.ts` にラベル追加
@@ -80,7 +80,7 @@ device_count 回くり返し:
 
 ## 6. バックアップ後方互換（必須要件）
 
-[backupFormat.ts](../../torabo-studio/src/backup/backupFormat.ts) の既存方式（版番号＋任意節）を踏襲：
+[backupFormat.ts](https://github.com/tak-2025/Torabo-Studio/blob/main/src/backup/backupFormat.ts) の既存方式（版番号＋任意節）を踏襲：
 - `BACKUP_VERSION` 2 → **3**。`trackpad?: { wireBase64 } | null` を **任意節**として追加。
 - `validateBackup`：`version <= 3` を受理（**古い v1/v2 はそのまま通る**）。必須は従来どおり trackball+keymap のみ。trackpad は任意。
 - `onExport`：他節と同様 try/catch で trackpad を READ（サービス無ければスキップ）。

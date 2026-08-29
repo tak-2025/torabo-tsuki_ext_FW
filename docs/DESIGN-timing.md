@@ -1,6 +1,7 @@
 # DESIGN-timing — タイミング調整タブ (hold-tap + positional + debounce)
 
-Status: 実装済み・実機検証待ち (2026-08-27 採用 / 2026-08-28 デバウンスの split 伝搬を追加)。
+Status: 実装済み・実機検証済み (2026-08-27 採用 / 2026-08-28 デバウンスの split 伝搬を追加、
+同日 hold-tap・positional・debounce・split 伝搬まで実機確認してクローズ)。
 バックログ3件 (ht-tab / ht-positional / debounce) を1つの timing モジュール +
 Studio 1タブに統合する。
 

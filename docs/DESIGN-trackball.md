@@ -53,7 +53,7 @@
 ## 3. 全体アーキテクチャ（3層・一気通貫）
 
 ```
-┌──────────────── アプリ (zmk-studio-torabo) ────────────────┐
+┌──────────────── アプリ (Torabo Studio) ────────────────────┐
 │ ZMK Studio fork。Keymapタブ(既存・無改変) + 「Trackball」タブ │
 │   開く=Read→デコード→UI / 編集→[保存]→エンコード→Write     │
 │ Tauri(Rust/bluest)が独自GATTをread/write（Studio RPCは無改変）│
@@ -146,7 +146,7 @@ temp: target=1, timeout=500。
 
 ---
 
-## 6. アプリ / UI 設計（`zmk-studio-torabo`）
+## 6. アプリ / UI 設計（[Torabo Studio](https://github.com/tak-2025/Torabo-Studio)）
 - 「Trackball」タブ（既存流用・拡張）。
   - **レイヤーごとに X行 / Y行**：役割(Move/Scroll/Off ドロップダウン) ＋ 向き(通常/反転トグル) ＋ 速度。
   - レイヤー行に **temp_enable** トグル。

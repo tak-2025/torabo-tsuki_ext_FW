@@ -29,7 +29,7 @@
 
 ### 1.1 ジェスチャ次元（新規）
 
-IQS7211E ドライバ（[iqs7211e.c](../../tako-custom/.zmk-workspace/zmk-driver-iqs7211e/src/iqs7211e.c)）は**ジェスチャ検出を既に実装済み**で、現状は固定でボタンを報告している：
+IQS7211E ドライバ（[iqs7211e.c](https://github.com/tak-2025/zmk-driver-iqs7211e/blob/torabo-tsuki/src/iqs7211e.c)）は**ジェスチャ検出を既に実装済み**で、現状は固定でボタンを報告している：
 
 | ドライバ現状 | 出力 | v2 での扱い |
 |---|---|---|
@@ -149,7 +149,7 @@ tp_binding(4B) = behavior u8, _rsv/mods u8, param u16(LE)
 - WRITE 受理時、`version==1` なら **v1 レイアウトとして復号**し、軸の binding は「役割から導出した既定 descriptor」で補完（＝旧アプリ／旧バックアップがそのまま通る）。`version==2` は v2 で復号。それ以外・長さ不一致・magic 不一致は**全拒否→既定維持**。
 - 各値クランプ：role≤6、behavior≤`TP_BEH_MAX`、step 1..32、layer<layer_count。範囲外は安全側（軸→MOVE、descriptor→NONE）。
 
-TS/C 同一定義（[tpConfig.ts](../../torabo-studio/src/trackpad/tpConfig.ts) を v2 拡張。`decodeTp` は version 分岐、`encodeTp` は常に v2 出力）。
+TS/C 同一定義（[tpConfig.ts](https://github.com/tak-2025/Torabo-Studio/blob/main/src/trackpad/tpConfig.ts) を v2 拡張。`decodeTp` は version 分岐、`encodeTp` は常に v2 出力）。
 
 ---
 
@@ -206,9 +206,9 @@ static struct zmk_behavior_binding tp_make(const struct tp_binding *d){
 
 v1 の [config_state.c](../trackpad/src/config_state.c) / [gatt_service.c](../trackpad/src/gatt_service.c) を v2 レイアウトに拡張（ダブルバッファ・ロックレス公開・NVS 再検証は不変）。GATT UUID `e1f4ac00/ac01` は**据え置き**（version で世代管理）、characteristic も単一のまま。
 
-**GATT WRITE を MTU 超に対応させる — 2つの書込みトランスポートを両対応**（wire が数百B＝MTU 超になるため）。実装は当初「btleplug の long-write 自動分割に任せる」想定だったが、デスクトップアプリは実際には **bluest 0.6.x**（[Cargo.toml](../../torabo-studio/src-tauri/Cargo.toml)）を使い、`Characteristic::write()` は **単発の ATT Write** に落ちる。**Windows/WinRT はこの単発 write を ATT Write Long に昇格してくれない**ため、MTU 超ペイロードは黙って落ちる（READ は Read Long で動くが WRITE は動かない、という実測バグ）。そこで **OS 非依存のアプリ側チャンク分割** ＋ **FW 側の二経路再組立** で確実に通す：
+**GATT WRITE を MTU 超に対応させる — 2つの書込みトランスポートを両対応**（wire が数百B＝MTU 超になるため）。実装は当初「btleplug の long-write 自動分割に任せる」想定だったが、デスクトップアプリは実際には **bluest 0.6.x**（[Cargo.toml](https://github.com/tak-2025/Torabo-Studio/blob/main/src-tauri/Cargo.toml)）を使い、`Characteristic::write()` は **単発の ATT Write** に落ちる。**Windows/WinRT はこの単発 write を ATT Write Long に昇格してくれない**ため、MTU 超ペイロードは黙って落ちる（READ は Read Long で動くが WRITE は動かない、という実測バグ）。そこで **OS 非依存のアプリ側チャンク分割** ＋ **FW 側の二経路再組立** で確実に通す：
 
-- **アプリ側**（[trackpad.rs](../../torabo-studio/src-tauri/src/transport/trackpad.rs) / 共有ヘルパ `transport::write_chunked`）：`Characteristic::max_write_len()`（Windows では **交渉済み ATT MTU − 3**。取得不能/0 なら 180B にフォールバック）を1チャンク上限とし、ペイロードをその上限で分割して **応答付き write を順送**する。write の応答往復がチャンクを直列化する（順序保証＋フロー制御）ので **遅延挿入は不要**。MTU 内の小さな config は従来どおり単発 write。
+- **アプリ側**（[trackpad.rs](https://github.com/tak-2025/Torabo-Studio/blob/main/src-tauri/src/transport/trackpad.rs) / 共有ヘルパ `transport::write_chunked`）：`Characteristic::max_write_len()`（Windows では **交渉済み ATT MTU − 3**。取得不能/0 なら 180B にフォールバック）を1チャンク上限とし、ペイロードをその上限で分割して **応答付き write を順送**する。write の応答往復がチャンクを直列化する（順序保証＋フロー制御）ので **遅延挿入は不要**。MTU 内の小さな config は従来どおり単発 write。
 - **FW 側**（[gatt_service.c](../trackpad/src/gatt_service.c) の `tp_write_cfg`）：`TP_WIRE_CAP` の静的バッファ1本で **2トランスポートを両対応** する再組立器：
   - **(A) ATT Write Long**（本来の long write。Zephyr は PREPARE キュー→Execute で offset 昇順に replay、または単発 Write Request が offset==0 で1回）。PREPARE は bounds のみ、`offset>0` は「連続 offset で連結し、`tp_apply_wire` は毎回試行（完全長のみ受理）」。
   - **(B) プレーン・チャンク書込み**（bluest/Windows。**全チャンクが offset==0** で来る）。offset で継続判定できないので、`offset==0` を次の3分岐で捌く：**①Fast path**＝そのチャンク単体が完全 wire（`tp_apply_wire(buf,len)==0`）なら適用・保存・完了（全小 config／v1 wire を吸収）。**②継続**＝再組立中で、直近チャンクが **フレッシュ（`k_uptime_get()` で 2000ms 以内）**、ステージ済みヘッダが期待全長 `tp_expected_len()` に解釈でき、`staged+len<=expected` なら末尾に連結。`==expected` で `tp_apply_wire` フル検証→成功で保存、失敗で破棄＋ATT エラー。**③新規開始**＝それ以外は破棄し、先頭が妥当ヘッダ（magic 0x7470＋既知 version）なら新規ステージ、さもなくば `BT_ATT_ERR_VALUE_NOT_ALLOWED` で拒否（ステージしない）。
@@ -218,11 +218,11 @@ v1 の [config_state.c](../trackpad/src/config_state.c) / [gatt_service.c](../tr
 
 ## 5. アプリ（Torabo-Studio）設計
 
-- [tpConfig.ts](../../torabo-studio/src/trackpad/tpConfig.ts)：`TpBinding` 型・`TpBehavior`/`TpGestureSlot` enum を追加。`decodeTp` は version 分岐（v1→軸のみ＋既定descriptor補完 / v2→フル）、`encodeTp` は常に v2。round-trip を node で検証（P1）。
-- [TrackpadSettings.tsx](../../torabo-studio/src/trackpad/TrackpadSettings.tsx)：
+- [tpConfig.ts](https://github.com/tak-2025/Torabo-Studio/blob/main/src/trackpad/tpConfig.ts)：`TpBinding` 型・`TpBehavior`/`TpGestureSlot` enum を追加。`decodeTp` は version 分岐（v1→軸のみ＋既定descriptor補完 / v2→フル）、`encodeTp` は常に v2。round-trip を node で検証（P1）。
+- [TrackpadSettings.tsx](https://github.com/tak-2025/Torabo-Studio/blob/main/src/trackpad/TrackpadSettings.tsx)：
   - 既存の「レイヤー×軸」テーブルに **binding 列**（behavior ドロップダウン＋キー/consumer/layer ピッカー）を追加。離散役割選択時のみ活性。
   - **ジェスチャ節**を新カード追加：レイヤー行 × { 単タップ / 2本指タップ / 長押し } の binding ピッカー。
-  - キーピッカーは既存の HID usage 選択 UI（[hid-usage-picker-keyboard.png](../../hid-usage-picker-keyboard.png) 相当）を再利用。
+  - キーピッカーは Torabo Studio の既存 HID usage 選択 UI（キーマップ編集のキーピッカー相当）を再利用。
   - Read→編集→Write の即反映フローは不変。
 - `MainPanels.tsx` / `i18n/messages.ts`：ラベル追記のみ。Studio RPC/protobuf は**無改変**（Tauri Rust が独自GATTを read/write、v1 と同じ）。
 
@@ -230,7 +230,7 @@ v1 の [config_state.c](../trackpad/src/config_state.c) / [gatt_service.c](../tr
 
 ## 6. バックアップ後方互換
 
-[backupFormat.ts](../../torabo-studio/src/backup/backupFormat.ts)：`trackpad` 任意節は **wireBase64 のまま**（中身が v2 wire になるだけ）。`BACKUP_VERSION` は据え置き可（trackpad 節の中身はFW/appの wire version が吸収）。旧バックアップ（v1 wire or trackpad無し）は §3 の version 分岐でそのまま復元可。**回帰テスト必須**：v1 wire を含む旧バックアップが v2 アプリ/FW で通ること。
+[backupFormat.ts](https://github.com/tak-2025/Torabo-Studio/blob/main/src/backup/backupFormat.ts)：`trackpad` 任意節は **wireBase64 のまま**（中身が v2 wire になるだけ）。`BACKUP_VERSION` は据え置き可（trackpad 節の中身はFW/appの wire version が吸収）。旧バックアップ（v1 wire or trackpad無し）は §3 の version 分岐でそのまま復元可。**回帰テスト必須**：v1 wire を含む旧バックアップが v2 アプリ/FW で通ること。
 
 ---
 
@@ -281,5 +281,3 @@ v1 の [config_state.c](../trackpad/src/config_state.c) / [gatt_service.c](../tr
 - ✅ **HOLD 有効化のため iqs7211e ドライバに press&hold→BTN_2 を小追加**（§4.6、2026-07-10 合意）。tap/scroll/drag に無干渉。改変は `tak-2025/zmk-driver-iqs7211e` の `torabo-tsuki` ブランチに fork 済み（2026-08-15、GPL-3.0 のまま）。
 - ✅ **DTAP を wire に追加**（gesture 12B→16B、`{tap,tap2,hold,dtap}`）。P1 codec の取りこぼしを修正し double-tap を有効化。round-trip 30/30。
 - ❓ **&kp 修飾の param エンコード**：`_rsv`→mods 転用で確定予定、実装時に ZMK `kp` 実装へ突き合わせて最終化（§4.3）。→ 実装時確定。
-</content>
-</invoke>
