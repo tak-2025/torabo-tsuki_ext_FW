@@ -337,9 +337,9 @@ function buildModel(){
   // ピンは載っている FFC で決まる（標準=P0.20 / 拡張=P0.31）。
   if      (pd.std==='encoder') P.push(SNIP.encBtnSplit);
   else if (pd.ext==='encoder') P.push(SNIP.encBtnSplitExt);
-  // 拡張LED（peripheral 側）: 表示器として動く。アノードが拡張パッドの電源に乗るので
-  // パッドが無い側は光らない → その場合は載せない。
-  if (state.sides[periph].ext==='led' && state.sides[periph].useLed && pd.ext==='pad'
+  // 拡張LED（peripheral 側）: 表示器として動く。パッドの有無に関わらず点灯する
+  // （実機確認 2026-08-29。旧実装は「パッドがレールを上げないと光らない」前提だった）。
+  if (state.sides[periph].ext==='led' && state.sides[periph].useLed
       && state.sides[central].ledMode==='live')
     P.push(SNIP.ledPeriph);
   // タイミング（デバウンス）の受け側。central の torabo-timing と対で常に入れる。
@@ -444,23 +444,18 @@ function validate(model){
   if (state.features.macros) msgs.push({ k:'warn', t:'マクロ: keymap の任意キーに &dmac 0〜19 を配置してください（GUIでは自動化されません）。中身は BLE で編集。' });
   if (state.features.combos) msgs.push({ k:'warn', t:'コンボ: keymap に combos{} ブロックを置かないこと（純正エンジンと二重所有になりビルド不能/競合）。' });
 
-  // 拡張LED — アノードが拡張パッドの電源レール(P0.24)に乗っているため、
-  // 同じ側に拡張パッドが無いとレールを誰も上げず LED は光らない。
+  // 拡張LED — パッドの有無に関わらず点灯する（実機確認 2026-08-29）。
   if (state.sides[central].ext==='led' && state.sides[central].useLed){
-    if (cd.ext !== 'pad'){
-      msgs.push({ k:'err', t:`拡張LED: LEDのアノードは拡張パッドの電源レール(P0.24)に乗っています。central（${central}）の拡張FFCが「ミニトラックパッド」でないと、そのレールを上げるものが無く LED は光りません。拡張FFCをパッドにするか、拡張LEDのチェックを外してください。` });
+    if (state.sides[central].ledMode==='live'){
+      msgs.push({ k:'warn', t:'拡張LED（ライブ設定）: ルール表を Studio の LED タブで編集（レイヤー/修飾キー/Caps/電池/切断 を 色×点滅 で割当）。左右独立。' });
     } else {
-      if (state.sides[central].ledMode==='live'){
-        msgs.push({ k:'warn', t:'拡張LED（ライブ設定）: ルール表を Studio の LED タブで編集（レイヤー/修飾キー/Caps/電池/切断 を 色×点滅 で割当）。左右独立。' });
-      } else {
-        msgs.push({ k:'warn', t:'拡張LED（従来）: BLEプロファイル切替（色コンボ1.5秒）＋相手側切断（赤を点灯しっぱなし）。実績のある固定動作で、Studio からは変更できません。切断放置は電池を食います（ライブ設定なら点滅にできます）。' });
-      }
+      msgs.push({ k:'warn', t:'拡張LED（従来）: BLEプロファイル切替（色コンボ1.5秒）＋相手側切断（赤を点灯しっぱなし）。実績のある固定動作で、Studio からは変更できません。切断放置は電池を食います（ライブ設定なら点滅にできます）。' });
     }
   }
 
   // 拡張LED — peripheral 側にLED実機があるのに従来方式のままだと、
   // 従来版（torabo-status-led-ext）は central のLEDしか駆動しないため誰にも制御されず消灯したまま。
-  if (state.sides[periph].ext==='led' && state.sides[periph].useLed && pd.ext==='pad'
+  if (state.sides[periph].ext==='led' && state.sides[periph].useLed
       && state.sides[central].ledMode==='legacy'){
     msgs.push({ k:'warn', t:`拡張LED: peripheral（${periph}）側の拡張LEDは「従来（固定）」方式では制御されず、消灯したままになります（従来版は central 側LED専用）。この LED を使うには LED制御を「ライブ設定」（LEDライブ設定）に切り替えてください（central に torabo-led-live、${periph} に torabo-led-ext-periph が載ります）。` });
   }
@@ -535,9 +530,8 @@ function genConf(model){
   if (state.features.layers && state.features.layersN>0) lines.push(`CONFIG_TORABO_RESERVED_LAYERS=${state.features.layersN}`);
   // 拡張LED: どちらの半分に「実際に光るLED」があるかを FW に教える。
   // FW はこれを capability として Studio に申告し、Studio は実在する側だけ出す。
-  // 光る条件 = LEDあり基盤 ＋ 同じ側に拡張パッド（アノードがその電源レールに乗るため）。
-  const ledOn = side => state.sides[side].ext==='led' && state.sides[side].useLed
-                        && sideDevices(side).ext==='pad';
+  // 光る条件 = LEDあり基盤 ＋「拡張LEDを使う」チェック（パッドの有無は関係ない）。
+  const ledOn = side => state.sides[side].ext==='led' && state.sides[side].useLed;
   const liveLed = state.sides[model.central].ledMode==='live' && (ledOn('left') || ledOn('right'));
   if (liveLed){
     lines.push(`# 拡張LEDの実在（Studio はこれを見てタブと左右を出し分ける）`);

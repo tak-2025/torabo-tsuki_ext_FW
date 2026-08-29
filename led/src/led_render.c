@@ -4,7 +4,7 @@
  * Two things it has to get right:
  *
  * 1. NEVER drive two channels at once. The 3-colour array shares one anode fed
- *    from a GPIO (the extender pad's P0.24 rail), which cannot source enough
+ *    from a GPIO (the extender's P0.24 rail), which cannot source enough
  *    current for two colours simultaneously. So a "mixed" colour is time-
  *    multiplexed one channel at a time, fast enough that persistence of vision
  *    blends it. Peak current stays at the single-channel budget — which also

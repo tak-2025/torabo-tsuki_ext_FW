@@ -5,8 +5,8 @@
  * status_led_ext — drive the 3-colour LED on the bmp-boost LED extender to show
  * BLE profile + split-link status on the RIGHT (central) half.
  *
- * Channels (common-anode array; the anode rides the trackpad-ext POW rail
- * P0.24, so the LED only lights while the ext pointing device is powered):
+ * Channels (common-anode array; the anode sits on the extender's P0.24 rail —
+ * lights regardless of whether an ext pad is present, verified 2026-08-29):
  *   red = P1.11   yellow-green = P1.10   "green" = P1.02 (datasheet Y)
  * Each colour is cathode-driven, so the devicetree marks the gpio
  * GPIO_ACTIVE_LOW and gpio_pin_set_dt(_, 1) lights it.
@@ -79,8 +79,8 @@ static uint8_t tsle_show_mask;     /* channels held by the flash */
 static uint8_t tsle_mux_pos;       /* last channel index lit by the mux handler */
 
 /*
- * The 3-colour array shares ONE anode fed from a GPIO (the trackpad-ext POW
- * rail, P0.24), which cannot source enough current to light two colours at
+ * The 3-colour array shares ONE anode fed from a GPIO (the extender's P0.24
+ * rail), which cannot source enough current to light two colours at
  * once. So whenever the effective state needs >=2 channels we never drive them
  * simultaneously: the mux handler lights ONE channel at a time and cycles fast
  * (TSLE_MUX_STEP_MS per channel) so persistence-of-vision blends them. Peak

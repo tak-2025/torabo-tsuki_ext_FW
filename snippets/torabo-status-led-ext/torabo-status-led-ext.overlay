@@ -1,8 +1,8 @@
 /*
  * torabo-status-led-ext snippet — the 3-colour LED on the bmp-boost LED
- * extender (right/central half). Cathode-driven common-anode array whose anode
- * rides the trackpad-ext POW rail (P0.24), so use this together with the
- * input-trackpad-ext snippet, which powers that rail.
+ * extender (right/central half). Cathode-driven common-anode array (anode on
+ * the extender's P0.24 rail). Lights regardless of whether an ext pad is
+ * present (verified on hardware 2026-08-29).
  *
  *   red          = P1.11  (&gpio1 11)
  *   yellow-green = P1.10  (&gpio1 10)

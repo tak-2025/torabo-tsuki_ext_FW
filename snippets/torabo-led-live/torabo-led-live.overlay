@@ -2,8 +2,8 @@
  * torabo-led-live — the 3-colour extender LED on the CENTRAL half, driven by the
  * runtime rule table instead of the hardcoded status_led_ext behaviour.
  *
- * Cathode-driven common-anode array whose anode rides the extender pad's POW rail
- * (P0.24) — so use together with the ext pad snippet, which powers that rail.
+ * Cathode-driven common-anode array (anode on the extender's P0.24 rail). Lights
+ * regardless of whether an ext pad is present (verified on hardware 2026-08-29).
  * GPIO_ACTIVE_LOW so gpio_pin_set_dt(_, 1) lights a channel.
  *
  *   red          = P1.11
