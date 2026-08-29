@@ -1,8 +1,13 @@
 # torabo-tsuki Hardware-Configuration Pattern Space — Firmware-Builder Spec
 
-> 作成: 2026-07-11（Fable モデルで全空間を整理 → Opus レビュー済み）。
+> 作成: 2026-07-11（Fable モデルで全空間を整理 → Opus レビュー済み）／
+> 更新: 2026-08-29（§5 のバックログ4件がすべて実装済みになったため、`*` = MISSING 表記を解消）。
 > ビルダー UI のバリデーション＋buildability ロジックの **実装 source-of-truth**。
-> 戦略・スコープは [../../PLAN-encoder-extender.md](../../PLAN-encoder-extender.md) を参照。
+>
+> **現状: 144 構成すべてが BUILDABLE-NOW です。** 以下の表に残る `MISSING` / `*` 付きトークン・
+> `ENC` / `PEXT` / `REG1` の tier 列は、**当時の実装状況の記録**として残してあります
+> （`index.html` の `MISSING_LABEL` は空で、ビルド不可バッジはどの構成でも出ません）。
+> ただし **ビルドできる＝実機検証済みではありません** — 多くの構成は未実機検証です。
 
 Authoritative enumeration of every valid hardware configuration for the torabo-tsuki split keyboard (ZMK, nRF52840 "bmp_boost"), the snippet composition each requires, and the missing-firmware backlog.
 
@@ -11,7 +16,8 @@ Authoritative enumeration of every valid hardware configuration for the torabo-t
 ## 0. Conventions & legend
 
 **Device codes:** `—` none · `B` trackball · `P` mini trackpad · `E` rotary encoder (EC11)
-**Snippet tokens** (missing ones marked `*`):
+**Snippet tokens** — かつて `*` を付けていたものも **すべて実装済み**（2026-08 時点）。`*` は
+以下の表・tier 列に歴史的記録として残っています。
 
 | Token | Snippet | Status |
 |---|---|---|
@@ -22,15 +28,16 @@ Authoritative enumeration of every valid hardware configuration for the torabo-t
 | `lst` | `input-listener` (central-local pointing device) | EXISTING |
 | `spl0` | `input-split` (hardcoded reg=<0>) | EXISTING |
 | `rcv0` | `input-split-listener` (hardcoded reg=<0>) | EXISTING |
-| `tpXspl` | `input-trackpad-ext-split` — split-export of extension trackpad（peripheral 側。listener を持たず `zmk,input-split` reg=0 で central へ転送。central は既存 `rcv0` で受ける）| **EXISTING**（2026-07-12 実装, 未実機検証。**reg=0 のみ** — reg=1 は下記 `reg1` 待ち）|
-| `spl1*` / `rcv1*` | reg=<1> twins of `input-split` / `input-split-listener` | **MISSING** |
+| `tpXspl` | `input-trackpad-ext-split` — split-export of extension trackpad（peripheral 側。listener を持たず `zmk,input-split` reg=0 で central へ転送。central は既存 `rcv0` で受ける）| **EXISTING**（2026-07-12 実装, 未実機検証）|
+| `spl1` / `rcv1` | reg=<1> twins。peripheral 側は `input-trackpad-ext-split-reg1`（拡張パッドを reg=1 で出す）、central 側は `input-split-listener-reg1` | **EXISTING**（実装済, 未実機検証。2個目の pointing が拡張パッドである前提のため、汎用 `input-split` reg=1 は用意していない）|
 | `encS` | `input-encoder` (standard-FFC EC11 回転; central 自身に載る場合はローカル。peripheral に載る場合は central に `encRecv` を併用) | **EXISTING**（2026-07-11 実装, 未実機検証）|
 | `encRecv` | `input-encoder-recv` (central 受け口: encoder device disabled + keymap-sensors ノードで LEN/index 確保。peripheral に標準エンコーダがある central 側に付ける) | **EXISTING**（2026-07-11 実装, 未実機検証）|
-| `encX*` | `input-encoder-ext` (extension-FFC EC11; same split-sensor semantics) | **MISSING** |
-| `btn*` | `encoder-button` composite `kscan-gpio-direct` key (P0.20 on standard, P0.31 on extension; a double-encoder side needs both pins in one composite) | **MISSING** |
+| `encX` | `input-encoder-ext`（＋ central 受けの `input-encoder-ext-recv`）extension-FFC EC11; same split-sensor semantics | **EXISTING**（実装済, 未実機検証）|
+| `btn` | エンコーダ押しボタン。**`kscan-gpio-direct` ではなく input 経路**で実装した（キー位置を消費しないので transform / keymap は無改造）。配置別に `torabo-encoder-btn-local`(central P0.20) / `-local-ext`(central P0.31) / `-split`(periph P0.20) / `-split-ext`(periph P0.31) ＋ central 側の `torabo-encoder-btn-recv` | **EXISTING**（実装済, 未実機検証）|
 | `LED` | `torabo-status-led-ext` (central + extender=FPC+LED only) | EXISTING |
 
 **Tier codes:** `BN` = BUILDABLE-NOW · `ENC` = needs-encoder-FW · `PEXT` = needs-peripheral-extension-FW · `REG1` = needs-reg1-twin. Tiers combine (`ENC+PEXT` etc.).
+**⚠ 2026-08-29 現在、`ENC` / `PEXT` / `REG1` の依存はすべて実装済みで、実効的には全 144 構成が `BN` です。** 以下の tier 列は当時の記録です。
 **Dep codes:** `E-std` = `encS*`+`btn*` · `E-ext` = `encX*`+`btn*` · `X-split` = `tpXspl*` (+ central receive wiring) · `reg1` = `spl1*`+`rcv1*`.
 
 **Symmetry:** all tables below fix **central = RIGHT, peripheral = LEFT**. The `central = LEFT` case is the identical table with the left/right columns swapped; the builder should canonicalize to (centralSide, peripheralSide) before lookup.
@@ -96,15 +103,20 @@ Every (device × connector × role) cell. "Central adds" = fragments that go on 
 | Mini pad | standard | central | `tpS` + `lst` | — | EXISTING |
 | Mini pad | standard | peripheral | `tpS` + `spl0` | `rcv0` | EXISTING |
 | Mini pad | extension | central | `tpX` — listener built in | — | EXISTING |
-| Mini pad | extension | peripheral | `tpXspl*` at its assigned reg slot | `rcv0` (EXISTING) if slot 0, `rcv1*` if slot 1 | **✳MISSING** |
-| Encoder | standard | central | `encS*` + keymap `sensor-bindings` + `btn*` (P0.20) | — | **✳MISSING** |
-| Encoder | standard | peripheral | `encS*` (split sensor) + `btn*` (P0.20) | `encRecv` = `input-encoder-recv` (§0; sensor-index/LEN reservation on the central — see PLAN-encoder-extender.md §3-1. No reg slot: ZMK relays sensors natively) | **✳MISSING** |
-| Encoder | extension | central | `encX*` + `sensor-bindings` + `btn*` (P0.31) | — | **✳MISSING** |
-| Encoder | extension | peripheral | `encX*` (split sensor) + `btn*` (P0.31) | — | **✳MISSING** |
-| — 2nd peripheral pointing dev — | (any) | peripheral | `spl1*` instead of a second `spl0` | `rcv1*` | **✳MISSING** |
+| Mini pad | extension | peripheral | `tpXspl` (slot 0) / `tpXspl1` = `input-trackpad-ext-split-reg1` (slot 1) | `rcv0` if slot 0, `rcv1` = `input-split-listener-reg1` if slot 1 | EXISTING（未実機検証）|
+| Encoder | standard | central | `encS` + `encLive` + `btn` = `torabo-encoder-btn-local` (P0.20) | — | EXISTING（未実機検証）|
+| Encoder | standard | peripheral | `encS` (split sensor) + `btn` = `torabo-encoder-btn-split` (P0.20) | `encRecv` = `input-encoder-recv`（§0; sensor-index/LEN reservation on the central。No reg slot: ZMK relays sensors natively）＋ `encLive` ＋ `torabo-encoder-btn-recv` | EXISTING（未実機検証）|
+| Encoder | extension | central | `encX` + `encLive` + `btn` = `torabo-encoder-btn-local-ext` (P0.31) | — | EXISTING（未実機検証）|
+| Encoder | extension | peripheral | `encX` (split sensor) + `btn` = `torabo-encoder-btn-split-ext` (P0.31) | `encXRecv` = `input-encoder-ext-recv` ＋ `encLive` ＋ `torabo-encoder-btn-recv` | EXISTING（未実機検証）|
+| — 2nd peripheral pointing dev — | ext pad | peripheral | `tpXspl1` instead of a second `spl0` | `rcv1` | EXISTING（未実機検証）|
+
+> **§2 の補足（2026-08-29）** — エンコーダのライブ設定 `torabo-encoder-live` は、回転が
+> central・peripheral どちらにあっても **central に1つだけ**載ります（ストア／GATT／回転ルーターは
+> ホストと話す側にしか置けないため）。ボタンも同様に、peripheral 側にあれば central が
+> `torabo-encoder-btn-recv` で受けます。実装の正は `index.html` の `buildModel()` です。
 
 **Reg-slot assignment rule (peripheral pointing devices only; encoders never consume a slot):**
-standard-connector pointing device → reg <0>; extension pad → reg <0> if the standard slot holds no pointing device, else reg <1>. Slot 1 requires the missing twins.
+standard-connector pointing device → reg <0>; extension pad → reg <0> if the standard slot holds no pointing device, else reg <1>. どちらのスロットも実装済みです。
 
 ---
 
@@ -324,6 +336,10 @@ All 12 rows are tier `ENC`; deps = {E-std, E-ext} regardless of right side (righ
 
 ### 4.x Tally (144 configs, central = right)
 
+> **これは 2026-07 時点の集計です。** バックログ（§5）が全件完了した現在は
+> **144/144 が BUILDABLE-NOW** で、下表の `ENC` / `PEXT` / `REG1` 行は「当時どの依存で
+> 止まっていたか」の記録として読んでください。
+
 | Tier | Count | Rows |
 |---|---|---|
 | BUILDABLE-NOW | 18 | Groups 1/4/7, rights without encoder |
@@ -336,27 +352,33 @@ All 12 rows are tier `ENC`; deps = {E-std, E-ext} regardless of right side (righ
 
 ---
 
-## 5. Minimal backlog to 100% coverage
+## 5. Backlog — **すべて完了（144/144 BUILDABLE-NOW）**
 
-Four work items; ordered by unlock value (counts against the 144-config space above; double for both-central variants).
+> **進捗 (2026-08-29 時点): 4件すべて実装済み。未実装依存によるビルド不可構成はもうありません。**
+> `index.html` の `MISSING_LABEL` は空オブジェクトで、ビルド不可バッジはどの構成でも出ません。
+> **ただし、ほぼすべてが未実機検証（ビルド＆フラッシュでの確認が済んでいない）です。**
 
-> **進捗 (2026-07-12):**
-> - ✅ 標準エンコーダ回転 = `input-encoder` + `input-encoder-recv`（ZMK公式テスト peripheral-encoder 準拠）。`&layer_0` に静的既定 `sensor-bindings`（音量±）も注入。
->   ※ 当初 `torabo-tsuki-config/snippets/` に置いていたが、fork 側の更新対象を増やさないため **2026-08-15 に `torabo-tsuki_ext_FW/snippets/` へ移設**（`input-encoder-ext` / `-ext-recv` / `input-split-listener-reg1` も同時）。
-> - ✅ 周辺拡張パッド = `input-trackpad-ext-split`（`torabo-tsuki_ext_FW/snippets/`。reg=0 のみ）。**エンコーダ不要で実機検証可能**。
-> - ⬜ 残り: `encoder-button` ／ `input-encoder-ext` ／ reg=1 版一式。
-> - **左構想（行10 = 左std=エンコーダ＋左ext=パッド）は `encoder-button` の1本だけ残す状態。**
-> - すべて未実機検証（ビルド＆フラッシュ未実施）。
+| Pri | Item | 成果物 | 状態 |
+|---|---|---|---|
+| 1a | 標準エンコーダ回転 | `input-encoder`（物理側）＋ `input-encoder-recv`（central 受け）。ZMK 公式テスト peripheral-encoder 準拠。`&layer_0` に静的既定 `sensor-bindings`（音量±）も注入 | ✅ 実装済（2026-07-11、未実機検証）|
+| 1b | エンコーダ押しボタン | `torabo-encoder-btn-local` / `-local-ext` / `-split` / `-split-ext` ＋ central 受けの `-recv`。**`kscan-gpio-direct` ではなく input 経路**で実装したため、当初案にあった transform への1キー追加は**不要**になった | ✅ 実装済（未実機検証）|
+| 1c | 拡張FFCエンコーダ | `input-encoder-ext` ＋ `input-encoder-ext-recv`（P0.17/21、ボタン P0.31）| ✅ 実装済（未実機検証）|
+| 2 | 周辺拡張パッドの split エクスポート | `input-trackpad-ext-split`（reg=0）。central は既存 `input-split-listener` で受ける | ✅ 実装済（2026-07-12、未実機検証）|
+| 3 | reg=<1> 版 | `input-trackpad-ext-split-reg1`（peripheral の2個目 pointing）＋ `input-split-listener-reg1`（central 受け）。2個目の pointing は必ず拡張パッドなので、汎用 `input-split` の reg=1 版は作っていない | ✅ 実装済（未実機検証）|
 
-| Pri | Item | Deliverables | Blocks | Fully unlocks when done (cumulative) |
-|---|---|---|---|---|
-| 1a | ~~input-encoder (std 回転)~~ ✅ | `input-encoder`（物理側）＋`input-encoder-recv`（central受け）。keymap に `sensor-bindings` を追加して割当 | 標準エンコーダの回転 | 実装済み（未実機検証）|
-| 1b | **`encoder-button`** composite `kscan-gpio-direct`（P0.20 std / P0.31 ext / 両方）＋ transform に1キー追加 | ボタン付きエンコーダの押下 | ボタン付き全構成 | エンコーダ押下が有効化 |
-| 1c | **`input-encoder-ext`**（＋`-recv`）拡張FFCのエンコーダ（P0.17/21、ボタンP0.31） | E-ext 系 | 拡張エンコーダ | +… |
-| 2 | ~~**`input-trackpad-ext-split`**~~ ✅ | 実装済（reg=0）。central は既存 `input-split-listener` で受ける | — | Groups 2 & 11 が解禁（reg=0 系）|
-| 3 | **reg=<1> 版一式**: `input-split` / `input-split-listener` / `input-trackpad-ext-split` の reg=1 対応（or reg パラメータ化）| 3 snippet twins | 24/144 configs (peripheral with two pointing devices: B/P, P/P) | +24 → 144/144 |
+> ※ これらの snippet は当初 fork 側（`torabo-tsuki-config/snippets/`）に置いていたが、
+> fork 側の更新対象を増やさないため **2026-08-15 に `torabo-tsuki_ext_FW/snippets/` へ移設**した。
 
 Notes:
-- Item 3 without item 2 unlocks nothing: every reg1 config also needs `X-split` (the second peripheral pointing device is always the extension pad).
-- Within item 1, `input-encoder-ext` (E-ext, 80 configs) edges out `input-encoder` (E-std, 63) if further splitting is needed; `encoder-button` first either way.
-- Orthogonal, no backlog impact: extender FPC vs FPC+LED (`torabo-status-led-ext` EXISTING, central only), central-side choice (pure left/right label swap).
+
+- 現在の未解決事項は **実装**ではなく **実機検証**です。特に reg=1 の二重ポインティング・
+  拡張FFCエンコーダが未確認。拡張LEDのライブ設定は実機検証済み。
+- Orthogonal, no backlog impact: extender FPC vs FPC+LED, central-side choice (pure left/right label swap)。
+- **左 central 構成**はコード上の半身依存が無い一方、検証は右 central ビルドのみ。
+
+### 5.1 常時出力される snippet（構成に依存しない）
+
+ビルダーは物理構成にかかわらず、central 行に `torabo-caps` / `torabo-rpc-tunnel` /
+`torabo-timing` を、peripheral 行に `torabo-timing-split` を必ず出力します。後ろ2つ
+（トンネル・タイミング）は **zmk 本体を `tak-2025/zmk` の `dev` に差し替えること**が前提で、
+`genWest()` はこれを検出して `config/west.yml` の zmk 置き換えを出力します。

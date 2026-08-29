@@ -118,7 +118,7 @@
         <div class="field indent row-ledmode" data-side="left"><span>└ LED制御</span>
           <select class="ledmode-sel" data-side="left" title="LEDの制御方式">
             <option value="legacy">従来（固定・実績あり）</option>
-            <option value="live">ライブ設定（Studioで編集・未実機検証）</option>
+            <option value="live">ライブ設定（Studioで編集）</option>
           </select></div>
       </div>
 
@@ -147,7 +147,7 @@
         <div class="field indent row-ledmode" data-side="right"><span>└ LED制御</span>
           <select class="ledmode-sel" data-side="right" title="LEDの制御方式">
             <option value="legacy">従来（固定・実績あり）</option>
-            <option value="live">ライブ設定（Studioで編集・未実機検証）</option>
+            <option value="live">ライブ設定（Studioで編集）</option>
           </select></div>
       </div>
     </div>
@@ -230,6 +230,12 @@ const SNIP = {
   // 独自設定を Studio RPC にも流す汎用トンネル。USB 接続でも全タブが使えるようになる。
   // BLE GATT は無変更のまま並存。central 専用（RPC 実体が central にしか無い）。
   rpcTunnel:'torabo-rpc-tunnel',
+  // キーの「効き」をライブ調整（&mt / &lt の hold-tap パラメータ＋ kscan デバウンス）。
+  // hold-tap の判定は central にしか無いので本体は central。デバウンスは各半身が自分の
+  // マトリクスを回すため、peripheral には受け側（central が接続のたびに送る2バイトを
+  // 自分の kscan に反映するだけ・保存も設定画面も無い）を対で載せる。
+  // zmk fork の <zmk/torabo_timing.h> フックが要るが、トンネルと同じ fork なので追加条件なし。
+  timing:'torabo-timing', timingSplit:'torabo-timing-split',
 };
 // 未実装キー → 表示ラベル（現在なし＝全構成ビルド可能）
 const MISSING_LABEL = {};
@@ -336,6 +342,9 @@ function buildModel(){
   if (state.sides[periph].ext==='led' && state.sides[periph].useLed && pd.ext==='pad'
       && state.sides[central].ledMode==='live')
     P.push(SNIP.ledPeriph);
+  // タイミング（デバウンス）の受け側。central の torabo-timing と対で常に入れる。
+  // これが無いと、アプリで書いたデバウンス値が central の kscan にしか効かない。
+  P.push(SNIP.timingSplit);
 
   // ---- central ----
   const C = [SNIP.studio, SNIP.splitCentral];
@@ -365,7 +374,7 @@ function buildModel(){
   if (state.features.trackpadlive && (pd.std==='pad' || pd.ext==='pad')) C.push(SNIP.liveSplit);
   // 拡張LED。2方式あり、同じGPIOを奪い合うので排他。
   //   legacy = torabo-status-led-ext … 固定動作（プロファイル色＋切断赤）。実績あり
-  //   live   = torabo-led-live       … ルール表＋GATT。Studioで編集。未実機検証
+  //   live   = torabo-led-live       … ルール表＋GATT。Studioで編集。実機検証済み
   // live は central が「頭脳」なので、どちらか一方にでもLEDがあれば central に載せる
   // （左だけにLEDがある構成で載せ忘れると、左は誰にも制御されない置物になる）。
   const ledWorks = side => state.sides[side].ext==='led' && state.sides[side].useLed
@@ -378,6 +387,10 @@ function buildModel(){
   // 独自設定を USB(Studio RPC) からも読み書きできるようにする。載っている機能の
   // ぶんだけ自動で口が開き、BLE GATT はそのまま残るので常に入れる。
   C.push(SNIP.rpcTunnel);
+  // キーの「効き」（&mt / &lt の tapping-term・flavor 等と kscan デバウンス）を
+  // 再フラッシュせず調整できるようにする。hold-tap の判定は central にあるので本体は
+  // こちら側。基本機能として常に入れる（相手側には上で torabo-timing-split を対で載せた）。
+  C.push(SNIP.timing);
   // ライブフィード（キー/レイヤーを NOTIFY で push）。central 専用・未購読時ゼロコスト
   // なのでチェックが入っていれば載せる（Torabo-Float が繋がったときだけ発火する）。
   if (state.features.liveFeed) C.push(SNIP.liveFeed);
@@ -438,7 +451,7 @@ function validate(model){
       msgs.push({ k:'err', t:`拡張LED: LEDのアノードは拡張パッドの電源レール(P0.24)に乗っています。central（${central}）の拡張FFCが「ミニトラックパッド」でないと、そのレールを上げるものが無く LED は光りません。拡張FFCをパッドにするか、拡張LEDのチェックを外してください。` });
     } else {
       if (state.sides[central].ledMode==='live'){
-        msgs.push({ k:'warn', t:'拡張LED（ライブ設定）: ルール表を Studio の LED タブで編集（レイヤー/修飾キー/Caps/電池/切断 を 色×点滅 で割当）。左右独立。⚠ この方式は【未実機検証】です。確実に動くものが欲しい場合は「従来（固定・実績あり）」を選んでください。' });
+        msgs.push({ k:'warn', t:'拡張LED（ライブ設定）: ルール表を Studio の LED タブで編集（レイヤー/修飾キー/Caps/電池/切断 を 色×点滅 で割当）。左右独立。' });
       } else {
         msgs.push({ k:'warn', t:'拡張LED（従来）: BLEプロファイル切替（色コンボ1.5秒）＋相手側切断（赤を点灯しっぱなし）。実績のある固定動作で、Studio からは変更できません。切断放置は電池を食います（ライブ設定なら点滅にできます）。' });
       }
@@ -548,14 +561,15 @@ function genWest(model){
   // 上流ドライバは INPUT_BTN_2 を出さないので、上流のままだと GST_HOLD（Studio の
   // 「長押し」割当）が無反応になる。ビルドは通ってしまうので気づきにくい。
   const usesPad = /input-trackpad/.test(joined);
-  // トンネル(torabo-rpc-tunnel)は RPC subsystem を zmk 本体側に持つので、上流 v0.3 の
-  // ままでは絶対にビルドできない（snippet が要求する CONFIG が存在しない）。
-  // トンネルを載せない構成なら素の zmk が正しいので、fork 指定はこの分岐でのみ出す。
-  const usesTunnel = joined.includes(SNIP.rpcTunnel);
+  // トンネル(torabo-rpc-tunnel)は RPC subsystem を、タイミング(torabo-timing /
+  // -split)は <zmk/torabo_timing.h> のフックを、それぞれ zmk 本体側に持つので、
+  // 上流 v0.3 のままでは絶対にビルドできない（snippet が要求する CONFIG が存在しない）。
+  // どちらも載せない構成なら素の zmk が正しいので、fork 指定はこの分岐でのみ出す。
+  const usesZmkFork = joined.includes(SNIP.rpcTunnel) || joined.includes(SNIP.timing);
   if (!usesModule && !usesPad)
     return '# （torabo-tsuki_ext_FW モジュールもトラックパッドも使わないため west.yml の変更は不要）';
   const o = [];
-  if (usesTunnel) o.push(
+  if (usesZmkFork) o.push(
     '# ⚠ zmk 本体は「追記」ではなく「置き換え」です。',
     '#    既存の  - name: zmk / remote: zmkfirmware / revision: v0.3  の3〜4行を必ず削除してください。',
     '#    同名の project が2つあると west が Malformed manifest（used twice）で落ちます。',
@@ -572,9 +586,10 @@ function genWest(model){
     '    - name: tak-2025','      url-base: https://github.com/tak-2025',
     '  projects:','    # …既存はそのまま…',
   );
-  if (usesTunnel) o.push(
+  if (usesZmkFork) o.push(
     '    # ↓ 既存の zmk エントリを削除した上で、これを入れる。',
-    '    #   v0.3 + トンネルの RPC subsystem（torabo-rpc-tunnel が要求する）。',
+    '    #   v0.3 + トンネルの RPC subsystem（torabo-rpc-tunnel が要求する）と、',
+    '    #   タイミング調整のフック <zmk/torabo_timing.h>（torabo-timing / -split）。',
     '    #   この fork の app/west.yml が torabo.proto 入りの zmk-studio-messages fork も',
     '    #   連れてくるので、messages をここに書き足す必要はない。',
     '    #   dev 固定: fork の main は上流追従用に空けてあるので触らない。',
