@@ -15,22 +15,22 @@ menuconfig TORABO_CAPS
 
 if TORABO_CAPS
 
-config TORABO_CAPS_BLE
-    bool "Expose the descriptor over a BLE GATT service"
-    depends on BT
-    default y
-    help
-      Read-only GATT service e1f4a000. Nothing to write: it describes the build.
+module = TORABO_CAPS
 
-config TORABO_CAPS_TUNNEL
-    bool "Expose the descriptor over the Studio RPC torabo tunnel"
-    depends on ZMK_STUDIO_TORABO_TUNNEL
-    default y
-    help
-      Same read-only descriptor as the GATT service (feature id 0x00), reachable
-      over whichever transport Studio RPC is using. This is how a USB-connected
-      app discovers that the tunnel exists at all, so keep it on wherever the
-      tunnel is on: the descriptor gains an RpcTunnel entry when it is.
+# BLE detail (was CONFIG_TORABO_CAPS_BLE's own help; kept here since Kconfig
+# help text can't take a $(var) — see features/common/Kconfig.template.torabo_ble):
+#   Read-only GATT service e1f4a000. Nothing to write: it describes the build.
+torabo-thing = "the descriptor"
+rsource "../common/Kconfig.template.torabo_ble"
+
+# TUNNEL detail (was CONFIG_TORABO_CAPS_TUNNEL's own help in full — this one
+# never fit the other 7 features' shared "Register the settings..." shape):
+#   Same read-only descriptor as the GATT service (feature id 0x00), reachable
+#   over whichever transport Studio RPC is using. This is how a USB-connected
+#   app discovers that the tunnel exists at all, so keep it on wherever the
+#   tunnel is on: the descriptor gains an RpcTunnel entry when it is.
+torabo-thing = "the descriptor"
+rsource "../common/Kconfig.template.torabo_tunnel"
 
 config TORABO_FW_VERSION_MAJOR
     int "Torabo firmware version: major"
@@ -44,7 +44,6 @@ config TORABO_FW_VERSION_PATCH
     int "Torabo firmware version: patch"
     default 0
 
-module = TORABO_CAPS
 module-str = Torabo Caps
 source "subsys/logging/Kconfig.template.log_config"
 

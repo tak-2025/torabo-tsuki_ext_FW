@@ -51,16 +51,24 @@ void test_caps(void) {
     T_EQ_INT(len, sizeof(caps_golden), "encoded length 48B (single ATT read)");
     T_EQ_MEM(buf, caps_golden, sizeof(caps_golden), "48-byte descriptor is byte-identical");
 
-    /* The descriptor must still fit the compile-time cap it declares. */
-    T_EQ_INT(TORABO_CAPS_WIRE_CAP, 8 + 10 * 4, "wire cap = hdr + MAX_FEATURES rows");
+    /* The descriptor must still fit the compile-time cap it declares. PLAN
+     * phase 6 (B-4) raised the cap 10->16; the table is count-driven, so the
+     * wire itself is unaffected (still 48B for this 10-feature build) even
+     * though the declared cap it must fit within is now 72B. */
+    T_EQ_INT(TORABO_CAPS_MAX_FEATURES, 16, "MAX_FEATURES raised to 16 (PLAN phase 6 B-4)");
+    T_EQ_INT(TORABO_CAPS_WIRE_CAP, 8 + 16 * 4, "wire cap = hdr + MAX_FEATURES rows");
     T_CHECK(len <= TORABO_CAPS_WIRE_CAP, "encoded length within declared cap");
 
-    /* PLAN §0.2 landmine: build_features() has no bound check and the table is
-     * exactly full today. Assert the fullness explicitly so an 11th feature is a
-     * failing test rather than a stack smash on real hardware. */
-    T_EQ_INT(buf[6], TORABO_CAPS_MAX_FEATURES,
-             "feature_count == TORABO_CAPS_MAX_FEATURES (table is FULL: adding an "
-             "11th feature overflows build_features()'s array - see PLAN phase 2 A-5)");
+    /* PLAN §0.2 landmine (closed in phase 2 A-5): build_features() guards
+     * against overrunning this array (drops + LOG_ERR past the limit). The
+     * table used to be exactly full at 10/10; phase 6 (B-4) raised the cap to
+     * 16 so it now sits at 10/16, with 6 slots free for future features.
+     * Assert the count explicitly so a future 17th feature is a visible,
+     * deliberate choice (bump TORABO_CAPS_MAX_FEATURES again) rather than a
+     * silently dropped feature row. */
+    T_EQ_INT(buf[6], 10,
+             "feature_count == 10 (10 of 16 TORABO_CAPS_MAX_FEATURES slots used - see "
+             "PLAN phase 6 B-4; overflow guard itself is PLAN phase 2 A-5)");
 
     /* Too-small buffer must be refused, not truncated. */
     uint8_t small[47];

@@ -276,7 +276,33 @@ int tp_encode_wire(uint8_t *buf, uint16_t cap, uint16_t *out_len);
 /* v3 wire length (gestures + coast present) for a given device/layer count. */
 uint16_t tp_wire_len_for(uint8_t device_count, uint8_t layer_count);
 
+/* True when a config declaring @p device_count devices would still encode a READ
+ * wire of at most @p cap bytes.
+ *
+ * Exists because a WRITE and the READ that follows it are not the same length:
+ * a wire may be WRITTEN as v1 or with fewer layers, but READ always comes back
+ * as full v3 at TP_MAX_LAYERS. Accepting a device_count whose READ no longer
+ * fits the tunnel's blob budget leaves the device in a state where WRITE keeps
+ * working but READ errors forever (docs/BACKLOG.md B-1) — and it is persisted,
+ * so a power cycle does not clear it. tp_apply_wire() therefore refuses such a
+ * write up front.
+ *
+ * Split out (rather than inlined into the guard) so the boundary itself is
+ * host-testable: `cap == the exact encoded length` must still fit. */
+static inline bool tp_read_fits(uint8_t device_count, uint16_t cap) {
+    return tp_wire_len_for(device_count, TP_MAX_LAYERS) <= cap;
+}
+
+/* Total wire length a blob starting with this header claims (any of v1/v2/v3),
+ * or 0 if the header is not a plausible start of one. The single place that
+ * knows this arithmetic: tp_apply_wire() uses it for the exact-length check,
+ * and the GATT write assembler uses it for chunk framing, so the two can never
+ * disagree about where a wire ends.
+ * @param hdr at least TP_WIRE_HDR readable bytes. */
+uint16_t tp_expected_len(const uint8_t *hdr);
+
 /* ---- compile-time wire layout (DESIGN-trackpad-v2.md §3) ----------------- */
+#define TP_WIRE_MAGIC 0x7470u /* "tp" */
 #define TP_WIRE_HDR 6u     /* magic[2] version device_count layer_count flags */
 #define TP_WIRE_DEV_HDR 2u /* v1/v2: device_id meta */
 /* v3 device header: device_id meta + coast{enable friction threshold}. The coast

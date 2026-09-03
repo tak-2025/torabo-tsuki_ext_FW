@@ -1,6 +1,8 @@
 if(CONFIG_ZMK_TRACKBALL_CONFIG OR CONFIG_ZTC_ENCODER)
     zephyr_library()
     zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+    # Shared header-only helpers (e.g. the tunnel apply+save wrapper macro).
+    zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../common/include)
 
     # Runtime store + its processors + GATT (only with the trackball config module).
     zephyr_library_sources_ifdef(CONFIG_ZMK_TRACKBALL_CONFIG src/config_state.c)

@@ -19,22 +19,14 @@
 
 #include <zmk/studio/torabo_tunnel.h>
 #include <zmk_timing_config/config.h>
+#include <torabo_common/tunnel_wrap.h>
 
 LOG_MODULE_DECLARE(tmg_config, CONFIG_ZMK_TIMING_CONFIG_LOG_LEVEL);
 
 #define TMG_TUNNEL_FEATURE_ID 0x10
 
-static int tmg_tunnel_write(const uint8_t *buf, uint16_t len) {
-    /* tmg_apply_wire does ALL validation (version/shape/length/clamp) and
-     * publishes atomically; it changes nothing on rejection. */
-    int ret = tmg_apply_wire(buf, len);
-    if (ret != 0) {
-        LOG_WRN("tmg tunnel write rejected (len=%u)", len);
-        return ret;
-    }
-
-    (void)tmg_save();
-    return 0;
-}
+/* tmg_apply_wire does ALL validation (version/shape/length/clamp) and
+ * publishes atomically; it changes nothing on rejection. */
+TORABO_TUNNEL_APPLY_SAVE_WRITE(tmg_tunnel_write, tmg_apply_wire, tmg_save, "tmg")
 
 TORABO_TUNNEL_FEATURE(timing, TMG_TUNNEL_FEATURE_ID, tmg_encode_wire, tmg_tunnel_write);

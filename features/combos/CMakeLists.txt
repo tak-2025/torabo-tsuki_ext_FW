@@ -1,6 +1,9 @@
 if(CONFIG_ZMK_DYNAMIC_COMBOS)
     zephyr_library()
     zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+    # Shared header-only helpers (the tunnel apply+save wrapper, the simple GATT
+    # settings window).
+    zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../common/include)
 
     # Validated, wire-native staged store + NVS persistence (always).
     zephyr_library_sources(src/combo_state.c)

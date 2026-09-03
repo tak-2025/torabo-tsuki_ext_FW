@@ -14,9 +14,14 @@
  * so the blob handed to us is always complete.
  *
  * The wire does outgrow the tunnel's blob budget in the extreme: a 4-device,
- * 20-layer build encodes 3054 bytes. tp_encode_wire refuses a too-small buffer
- * rather than truncating, so the tunnel answers ERROR; raise
+ * 20-layer build encodes 3066 bytes. tp_encode_wire refuses a too-small buffer
+ * rather than truncating, so the tunnel would answer ERROR; raise
  * CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE for such a build.
+ *
+ * Getting INTO that state is now prevented rather than merely documented: when
+ * this bridge is compiled in, tp_apply_wire() refuses a WRITE whose device_count
+ * would make the READ exceed the budget (docs/BACKLOG.md B-1). A config that
+ * cannot be read back can therefore never be persisted in the first place.
  */
 
 #include <zephyr/kernel.h>
@@ -24,22 +29,14 @@
 
 #include <zmk/studio/torabo_tunnel.h>
 #include <zmk_trackpad_config/config.h>
+#include <torabo_common/tunnel_wrap.h>
 
 LOG_MODULE_DECLARE(tp_config, CONFIG_ZMK_TRACKPAD_CONFIG_LOG_LEVEL);
 
 #define TP_TUNNEL_FEATURE_ID 0x0C
 
-static int tp_tunnel_write(const uint8_t *buf, uint16_t len) {
-    /* tp_apply_wire does ALL validation (magic/version/length/clamp) and
-     * publishes atomically; it changes nothing on rejection. */
-    int ret = tp_apply_wire(buf, len);
-    if (ret != 0) {
-        LOG_WRN("tp tunnel write rejected (len=%u)", len);
-        return ret;
-    }
-
-    (void)tp_save();
-    return 0;
-}
+/* tp_apply_wire does ALL validation (magic/version/length/clamp) and
+ * publishes atomically; it changes nothing on rejection. */
+TORABO_TUNNEL_APPLY_SAVE_WRITE(tp_tunnel_write, tp_apply_wire, tp_save, "tp")
 
 TORABO_TUNNEL_FEATURE(trackpad, TP_TUNNEL_FEATURE_ID, tp_encode_wire, tp_tunnel_write);

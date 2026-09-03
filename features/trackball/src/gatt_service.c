@@ -29,48 +29,24 @@ LOG_MODULE_DECLARE(ztc_config, CONFIG_ZMK_TRACKBALL_CONFIG_LOG_LEVEL);
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
 
+#include <torabo_common/gatt_simple.h>
+
 #define ZTC_BT_UUID_SVC BT_UUID_128_ENCODE(0xe1f4a900, 0x1c2d, 0x4b6e, 0x9f3a, 0x0a1b2c3d4e5f)
 #define ZTC_BT_UUID_CFG BT_UUID_128_ENCODE(0xe1f4a901, 0x1c2d, 0x4b6e, 0x9f3a, 0x0a1b2c3d4e5f)
 
 static struct bt_uuid_128 ztc_svc_uuid = BT_UUID_INIT_128(ZTC_BT_UUID_SVC);
 static struct bt_uuid_128 ztc_cfg_uuid = BT_UUID_INIT_128(ZTC_BT_UUID_CFG);
 
-/* ZTC_WIRE_CAP (the v3 length: hdr + layers + coast trailer) comes from config.h
- * so this stack buffer can never drift behind a wire bump. */
+/* The READ/WRITE pair is the shape all five simple settings windows share
+ * (torabo_common/gatt_simple.h). ZTC_WIRE_CAP (the v3 length: hdr + layers +
+ * coast trailer) comes from config.h so the buffer can never drift behind a wire
+ * bump, and the trackball wire is small enough to keep on the RX stack (AUTO),
+ * as it always has been. ztc_apply_wire does ALL validation (len/magic/version/
+ * range clamp) and publishes atomically; it changes nothing on rejection. */
+TORABO_GATT_SIMPLE_HANDLERS(ztc, TORABO_GATT_WIRE_AUTO, ZTC_WIRE_CAP, ztc_encode_wire,
+                            ztc_apply_wire, (void)ztc_save(), "ztc")
 
-static ssize_t ztc_read_cfg(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf,
-                            uint16_t len, uint16_t offset) {
-    uint8_t wire[ZTC_WIRE_CAP];
-    uint16_t wlen = 0;
-    if (ztc_encode_wire(wire, sizeof(wire), &wlen) != 0) {
-        return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
-    }
-    return bt_gatt_attr_read(conn, attr, buf, len, offset, wire, wlen);
-}
-
-static ssize_t ztc_write_cfg(struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf,
-                             uint16_t len, uint16_t offset, uint8_t flags) {
-    if (offset != 0) {
-        return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
-    }
-    /* ztc_apply_wire does ALL validation (len/magic/version/range clamp) and
-     * publishes atomically; it changes nothing on rejection. */
-    if (ztc_apply_wire((const uint8_t *)buf, len) != 0) {
-        LOG_WRN("ztc GATT write rejected (len=%u)", len);
-        return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
-    }
-    (void)ztc_save();
-    return len;
-}
-
-/* clang-format off */
-BT_GATT_SERVICE_DEFINE(ztc_svc,
-    BT_GATT_PRIMARY_SERVICE(&ztc_svc_uuid),
-    BT_GATT_CHARACTERISTIC(&ztc_cfg_uuid.uuid,
-                           BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
-                           BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT,
-                           ztc_read_cfg, ztc_write_cfg, NULL),
-);
-/* clang-format on */
+TORABO_GATT_SIMPLE_SERVICE_DEFINE(ztc_svc, ztc_svc_uuid, ztc_cfg_uuid, ztc_gatt_read,
+                                  ztc_gatt_write);
 
 #endif /* CONFIG_ZMK_TRACKBALL_CONFIG_BLE */

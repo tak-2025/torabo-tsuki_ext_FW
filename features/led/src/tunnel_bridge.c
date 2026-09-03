@@ -14,20 +14,12 @@
 
 #include <zmk/studio/torabo_tunnel.h>
 #include <zmk_led_config/config.h>
+#include <torabo_common/tunnel_wrap.h>
 
 LOG_MODULE_DECLARE(led_config, CONFIG_ZMK_LED_CONFIG_LOG_LEVEL);
 
 #define LED_TUNNEL_FEATURE_ID 0x0E
 
-static int led_tunnel_write(const uint8_t *buf, uint16_t len) {
-    int ret = led_apply_wire(buf, len);
-    if (ret != 0) {
-        LOG_WRN("led tunnel write rejected (len=%u)", len);
-        return ret;
-    }
-
-    (void)led_save();
-    return 0;
-}
+TORABO_TUNNEL_APPLY_SAVE_WRITE(led_tunnel_write, led_apply_wire, led_save, "led")
 
 TORABO_TUNNEL_FEATURE(led, LED_TUNNEL_FEATURE_ID, led_encode_wire, led_tunnel_write);

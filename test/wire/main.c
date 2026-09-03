@@ -60,6 +60,9 @@ int main(void) {
     test_encoder();
     test_macros();
     test_combos();
+    test_coast();
+    test_binding();
+    test_wire_asm();
 
     printf("\n---------------------------------------------\n");
     printf("passed: %d   failed: %d\n", torabo_test_passed, torabo_test_failed);

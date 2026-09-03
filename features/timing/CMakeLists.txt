@@ -1,6 +1,8 @@
 if(CONFIG_ZMK_TIMING_CONFIG OR CONFIG_ZMK_TIMING_SPLIT_PERIPHERAL)
     zephyr_library()
     zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+    # Shared header-only helpers (e.g. the tunnel apply+save wrapper macro).
+    zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../common/include)
 
     # <zmk/torabo_timing.h> (the fork's override points) lives with the rest of
     # the zmk app headers, which are PRIVATE to the `app` target. Ask for the

@@ -72,9 +72,14 @@ mkdir -p "${BUILD_DIR}"
 
 # ---- the production sources under test --------------------------------------
 # Only pure wire/state code. GATT services, tunnel bridges, input processors and
-# behaviors are NOT here: they need the Bluetooth / input / behavior subsystems,
-# which cannot be stubbed without either changing production code (forbidden in
-# phase 0) or writing a fake big enough to test itself instead.
+# behaviors are NOT compiled here: they need the Bluetooth / input / behavior
+# subsystems, which cannot be stubbed without either changing production code or
+# writing a fake big enough to test itself instead.
+#
+# The parts of them that WERE extracted into header-only helpers are tested
+# directly by the test files below, without their .c hosts:
+# torabo_common/coast.h (test_coast.c), binding.h (test_binding.c) and
+# torabo_common/wire_asm.h (test_wire_asm.c).
 SOURCES=(
     "${MODULE_DIR}/features/caps/src/caps.c"
     "${MODULE_DIR}/features/trackball/src/config_state.c"
@@ -99,6 +104,9 @@ TESTS=(
     "${HERE}/test_encoder.c"
     "${HERE}/test_macros.c"
     "${HERE}/test_combos.c"
+    "${HERE}/test_coast.c"
+    "${HERE}/test_binding.c"
+    "${HERE}/test_wire_asm.c"
 )
 
 INCLUDES=(
@@ -113,6 +121,7 @@ INCLUDES=(
     "-I${MODULE_DIR}/features/macros/include"
     "-I${MODULE_DIR}/features/combos/include"
     "-I${MODULE_DIR}/features/live_feed/include"
+    "-I${MODULE_DIR}/features/common/include"
 )
 
 CFLAGS=(

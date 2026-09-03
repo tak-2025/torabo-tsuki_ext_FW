@@ -14,20 +14,12 @@
 
 #include <zmk/studio/torabo_tunnel.h>
 #include <zmk_encoder_config/config.h>
+#include <torabo_common/tunnel_wrap.h>
 
 LOG_MODULE_DECLARE(enc_config, CONFIG_ZMK_ENCODER_CONFIG_LOG_LEVEL);
 
 #define ENC_TUNNEL_FEATURE_ID 0x0D
 
-static int enc_tunnel_write(const uint8_t *buf, uint16_t len) {
-    int ret = enc_apply_wire(buf, len);
-    if (ret != 0) {
-        LOG_WRN("enc tunnel write rejected (len=%u)", len);
-        return ret;
-    }
-
-    (void)enc_save();
-    return 0;
-}
+TORABO_TUNNEL_APPLY_SAVE_WRITE(enc_tunnel_write, enc_apply_wire, enc_save, "enc")
 
 TORABO_TUNNEL_FEATURE(encoder, ENC_TUNNEL_FEATURE_ID, enc_encode_wire, enc_tunnel_write);

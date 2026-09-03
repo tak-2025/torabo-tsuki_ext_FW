@@ -17,23 +17,21 @@ menuconfig ZMK_LED_CONFIG
 
 if ZMK_LED_CONFIG
 
-config ZMK_LED_CONFIG_BLE
-    bool "Expose the LED rules over a BLE GATT service"
-    depends on BT
-    default y
-    help
-      Encrypted GATT service e1f4ae00 to read/write the rule table live. 72 B, so
-      it fits in a single ATT write and needs no Write Long.
+module = ZMK_LED_CONFIG
 
-config ZMK_LED_CONFIG_TUNNEL
-    bool "Expose the LED rules over the Studio RPC torabo tunnel"
-    depends on ZMK_STUDIO_TORABO_TUNNEL
-    default y
-    help
-      Register the settings with the torabo tunnel so they are reachable over
-      whichever transport Studio RPC is using (USB serial included).
-      Carries the exact same wire blob as the GATT service (feature id 0x0E), and
-      coexists with it.
+# BLE detail (was CONFIG_ZMK_LED_CONFIG_BLE's own help; kept here since
+# Kconfig help text can't take a $(var) — see
+# features/common/Kconfig.template.torabo_ble):
+#   Encrypted GATT service e1f4ae00 to read/write the rule table live. 72 B,
+#   so it fits in a single ATT write and needs no Write Long.
+torabo-thing = "the LED rules"
+rsource "../common/Kconfig.template.torabo_ble"
+
+# TUNNEL detail (was CONFIG_ZMK_LED_CONFIG_TUNNEL's own help tail):
+#   Carries the exact same wire blob as the GATT service (feature id 0x0E),
+#   and coexists with it.
+torabo-thing = "the LED rules"
+rsource "../common/Kconfig.template.torabo_tunnel"
 
 config ZMK_LED_CONFIG_LEFT_PRESENT
     bool "An LED exists on the left half"
@@ -57,7 +55,6 @@ config ZMK_LED_CONFIG_CENTRAL_IS_LEFT
       Tells the rule engine which array slot is local and which is reached over
       the split, and is advertised to the app. The firmware builder sets it.
 
-module = ZMK_LED_CONFIG
 module-str = ZMK LED Config
 source "subsys/logging/Kconfig.template.log_config"
 

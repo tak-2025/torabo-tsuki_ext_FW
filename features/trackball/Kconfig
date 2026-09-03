@@ -8,21 +8,20 @@ menuconfig ZMK_TRACKBALL_CONFIG
 
 if ZMK_TRACKBALL_CONFIG
 
-config ZMK_TRACKBALL_CONFIG_BLE
-    bool "Expose trackball settings over a BLE GATT service"
-    depends on BT
-    default y
-    help
-      Custom encrypted GATT service to read/write the settings live.
+module = ZMK_TRACKBALL_CONFIG
 
-config ZMK_TRACKBALL_CONFIG_TUNNEL
-    bool "Expose trackball settings over the Studio RPC torabo tunnel"
-    depends on ZMK_STUDIO_TORABO_TUNNEL
-    default y
-    help
-      Register the settings with the torabo tunnel so they are reachable over
-      whichever transport Studio RPC is using (USB serial included). Carries the
-      exact same wire blob as the GATT service, and coexists with it.
+# BLE detail (was CONFIG_ZMK_TRACKBALL_CONFIG_BLE's own help; kept here since
+# Kconfig help text can't take a $(var) — see
+# features/common/Kconfig.template.torabo_ble):
+#   Custom encrypted GATT service to read/write the settings live.
+torabo-thing = "trackball settings"
+rsource "../common/Kconfig.template.torabo_ble"
+
+# TUNNEL detail: none — this feature's original help was already exactly the
+# generic text in features/common/Kconfig.template.torabo_tunnel (no feature
+# id call-out), so nothing is lost here.
+torabo-thing = "trackball settings"
+rsource "../common/Kconfig.template.torabo_tunnel"
 
 # Auto-enabled when a matching devicetree node is instantiated (single source of
 # truth: the build overlay). Gates compilation so an unused processor is dropped.
@@ -54,7 +53,6 @@ config ZTC_PROFILE_LED_INDICATOR
       blink ... profile 4 = 5 blinks. Requires a `status_led` devicetree node
       (present on torabo-tsuki). Central-only; harmless if no node exists.
 
-module = ZMK_TRACKBALL_CONFIG
 module-str = ZMK Trackball Config
 source "subsys/logging/Kconfig.template.log_config"
 

@@ -14,26 +14,23 @@ menuconfig ZMK_DYNAMIC_COMBOS
 
 if ZMK_DYNAMIC_COMBOS
 
-config ZMK_DYNAMIC_COMBOS_BLE
-    bool "Expose dynamic-combo config over a BLE GATT service"
-    depends on BT
-    default y
-    help
-      Custom encrypted GATT service: READ returns all combo slots (Read Blob),
-      WRITE updates one combo at a time (small enough to fit a single ATT write,
-      so no long-write is needed).
-
-config ZMK_DYNAMIC_COMBOS_TUNNEL
-    bool "Expose the dynamic-combo config over the Studio RPC torabo tunnel"
-    depends on ZMK_STUDIO_TORABO_TUNNEL
-    default y
-    help
-      Register the settings with the torabo tunnel so they are reachable over
-      whichever transport Studio RPC is using (USB serial included).
-      Carries the exact same READ/WRITE wire blobs as the GATT service (feature
-      id 0x0B), and coexists with it.
-
 module = ZMK_DYNAMIC_COMBOS
+
+# BLE detail (was CONFIG_ZMK_DYNAMIC_COMBOS_BLE's own help; kept here since
+# Kconfig help text can't take a $(var) — see
+# features/common/Kconfig.template.torabo_ble):
+#   Custom encrypted GATT service: READ returns all combo slots (Read Blob),
+#   WRITE updates one combo at a time (small enough to fit a single ATT write,
+#   so no long-write is needed).
+torabo-thing = "dynamic-combo config"
+rsource "../common/Kconfig.template.torabo_ble"
+
+# TUNNEL detail (was CONFIG_ZMK_DYNAMIC_COMBOS_TUNNEL's own help tail):
+#   Carries the exact same READ/WRITE wire blobs as the GATT service (feature
+#   id 0x0B), and coexists with it.
+torabo-thing = "the dynamic-combo config"
+rsource "../common/Kconfig.template.torabo_tunnel"
+
 module-str = ZMK Dynamic Combos
 source "subsys/logging/Kconfig.template.log_config"
 

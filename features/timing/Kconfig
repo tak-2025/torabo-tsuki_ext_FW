@@ -20,25 +20,23 @@ menuconfig ZMK_TIMING_CONFIG
 
 if ZMK_TIMING_CONFIG
 
-config ZMK_TIMING_CONFIG_BLE
-    bool "Expose the timing settings over a BLE GATT service"
-    depends on BT
-    default y
-    help
-      Custom encrypted GATT service (e1f4b000) to read/write the settings live.
-      The wire is a fixed 96 bytes: it fits a single ATT write once the MTU has
-      been negotiated up (the torabo-combos / torabo-trackball snippets already
-      raise it), and the write path reassembles chunks when it has not.
+module = ZMK_TIMING_CONFIG
 
-config ZMK_TIMING_CONFIG_TUNNEL
-    bool "Expose the timing settings over the Studio RPC torabo tunnel"
-    depends on ZMK_STUDIO_TORABO_TUNNEL
-    default y
-    help
-      Register the settings with the torabo tunnel so they are reachable over
-      whichever transport Studio RPC is using (USB serial included).
-      Carries the exact same 96-byte wire blob as the GATT service (feature id
-      0x10), and coexists with it.
+# BLE detail (was CONFIG_ZMK_TIMING_CONFIG_BLE's own help; kept here since
+# Kconfig help text can't take a $(var) — see
+# features/common/Kconfig.template.torabo_ble):
+#   Custom encrypted GATT service (e1f4b000) to read/write the settings live.
+#   The wire is a fixed 96 bytes: it fits a single ATT write once the MTU has
+#   been negotiated up (the torabo-combos / torabo-trackball snippets already
+#   raise it), and the write path reassembles chunks when it has not.
+torabo-thing = "the timing settings"
+rsource "../common/Kconfig.template.torabo_ble"
+
+# TUNNEL detail (was CONFIG_ZMK_TIMING_CONFIG_TUNNEL's own help tail):
+#   Carries the exact same 96-byte wire blob as the GATT service (feature id
+#   0x10), and coexists with it.
+torabo-thing = "the timing settings"
+rsource "../common/Kconfig.template.torabo_tunnel"
 
 config ZMK_TIMING_CONFIG_DEBOUNCE_PRESS_MS
     int "Devicetree debounce-press-ms of the matrix kscan"
@@ -61,7 +59,6 @@ config ZMK_TIMING_CONFIG_DEBOUNCE_RELEASE_MS
     help
       See ZMK_TIMING_CONFIG_DEBOUNCE_PRESS_MS.
 
-module = ZMK_TIMING_CONFIG
 module-str = ZMK Timing Config
 source "subsys/logging/Kconfig.template.log_config"
 

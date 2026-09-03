@@ -8,24 +8,22 @@ menuconfig ZMK_DYNAMIC_KEYMAP
 
 if ZMK_DYNAMIC_KEYMAP
 
-config ZMK_DYNAMIC_KEYMAP_BLE
-    bool "Expose dynamic-keymap config over a BLE GATT service"
-    depends on BT
-    default y
-    help
-      Custom encrypted GATT service: READ returns all macro slots (Read Blob),
-      WRITE updates one slot at a time (small enough to fit a single ATT write,
-      so no long-write is needed).
+module = ZMK_DYNAMIC_KEYMAP
 
-config ZMK_DYNAMIC_KEYMAP_TUNNEL
-    bool "Expose the dynamic-keymap config over the Studio RPC torabo tunnel"
-    depends on ZMK_STUDIO_TORABO_TUNNEL
-    default y
-    help
-      Register the settings with the torabo tunnel so they are reachable over
-      whichever transport Studio RPC is using (USB serial included).
-      Carries the exact same READ/WRITE wire blobs as the GATT service (feature
-      id 0x0A), and coexists with it.
+# BLE detail (was CONFIG_ZMK_DYNAMIC_KEYMAP_BLE's own help; kept here since
+# Kconfig help text can't take a $(var) — see
+# features/common/Kconfig.template.torabo_ble):
+#   Custom encrypted GATT service: READ returns all macro slots (Read Blob),
+#   WRITE updates one slot at a time (small enough to fit a single ATT write,
+#   so no long-write is needed).
+torabo-thing = "dynamic-keymap config"
+rsource "../common/Kconfig.template.torabo_ble"
+
+# TUNNEL detail (was CONFIG_ZMK_DYNAMIC_KEYMAP_TUNNEL's own help tail):
+#   Carries the exact same READ/WRITE wire blobs as the GATT service (feature
+#   id 0x0A), and coexists with it.
+torabo-thing = "the dynamic-keymap config"
+rsource "../common/Kconfig.template.torabo_tunnel"
 
 config ZMK_DYNAMIC_KEYMAP_STEP_TAP_MS
     int "Per-step tap duration (ms) for TAP steps"
@@ -35,7 +33,6 @@ config ZMK_DYNAMIC_KEYMAP_STEP_GAP_MS
     int "Inter-step gap (ms)"
     default 2
 
-module = ZMK_DYNAMIC_KEYMAP
 module-str = ZMK Dynamic Keymap
 source "subsys/logging/Kconfig.template.log_config"
 

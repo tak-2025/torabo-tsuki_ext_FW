@@ -28,6 +28,10 @@ LOG_MODULE_DECLARE(tmg_config, CONFIG_ZMK_TIMING_CONFIG_LOG_LEVEL);
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
 
+/* After LOG_MODULE_DECLARE above: the assembler's LOG_WRN calls bind to this
+ * file's log module. */
+#include <torabo_common/wire_asm.h>
+
 #define TMG_BT_UUID_SVC BT_UUID_128_ENCODE(0xe1f4b000, 0x1c2d, 0x4b6e, 0x9f3a, 0x0a1b2c3d4e5f)
 #define TMG_BT_UUID_CFG BT_UUID_128_ENCODE(0xe1f4b001, 0x1c2d, 0x4b6e, 0x9f3a, 0x0a1b2c3d4e5f)
 
@@ -47,112 +51,45 @@ static ssize_t tmg_read_cfg(struct bt_conn *conn, const struct bt_gatt_attr *att
     return bt_gatt_attr_read(conn, attr, buf, len, offset, wire, wlen);
 }
 
-/* Wire reassembly (same problem, and same solution, as the trackpad service —
- * see trackpad/src/gatt_service.c for the long version).
- *
- * 96 bytes fits one ATT write only once the MTU has been negotiated up; on the
- * default 23-byte MTU, and on Windows/WinRT clients that refuse to promote an
- * oversized payload into an ATT Write Long at all, the blob arrives in pieces:
- *
- *  (A) ATT Write Long — Prepare chunks (committed on Execute, replayed with a
- *      RISING offset), which we append by offset.
- *  (B) Plain chunked writes — EVERY chunk arrives at offset 0, so there is no
- *      offset to frame with. We parse the staged header for the expected total
- *      and accumulate consecutive offset-0 chunks until we reach it.
+/* Wire reassembly (same problem, and now literally the same code, as the
+ * trackpad service): 96 bytes fits one ATT write only once the MTU has been
+ * negotiated up. On the default 23-byte MTU, and on Windows/WinRT clients that
+ * refuse to promote an oversized payload into an ATT Write Long at all, the blob
+ * arrives in pieces — either at rising offsets or as a run of ordinary writes
+ * that ALL carry offset 0. torabo_common/wire_asm.h frames both; it is a
+ * verbatim extraction of the code that used to sit right here (refactor phase 5
+ * / B-1), proved equivalent in test/wire/test_wire_asm.c.
  *
  * The assembler only frames. All validation stays in tmg_apply_wire, which sees
- * the completed blob before anything is applied. Overflow, an offset
- * discontinuity, or a garbled restart drops the partial buffer and rejects.
- */
-#define TMG_ASM_TIMEOUT_MS 2000 /* max gap between plain chunks before we give up */
-
+ * the completed blob before anything is applied. */
 static uint8_t tmg_asm_buf[TMG_WIRE_CAP];
-static uint16_t tmg_asm_len;    /* bytes currently staged */
-static int64_t tmg_asm_last_ms; /* k_uptime_get() of the last staged chunk */
+
+static struct torabo_wire_asm tmg_asm = {
+    .buf = tmg_asm_buf,
+    .cap = sizeof(tmg_asm_buf),
+    .hdr_len = TMG_WIRE_HDR,
+    .expected_len = tmg_expected_len,
+    .apply = tmg_apply_wire,
+    .save = tmg_save,
+    .tag = "tmg",
+};
 
 static ssize_t tmg_write_cfg(struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf,
                              uint16_t len, uint16_t offset, uint8_t flags) {
     ARG_UNUSED(conn);
     ARG_UNUSED(attr);
-    const uint8_t *data = buf;
 
-    if ((uint32_t)offset + len > sizeof(tmg_asm_buf)) {
-        tmg_asm_len = 0; /* drop any partial: this transfer can't fit */
+    switch (torabo_wire_asm_feed(&tmg_asm, (const uint8_t *)buf, len, offset,
+                                 (flags & BT_GATT_WRITE_FLAG_PREPARE) != 0, k_uptime_get())) {
+    case TORABO_WIRE_ASM_ACCEPTED:
+        return len;
+    case TORABO_WIRE_ASM_REJECT_LEN:
         return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
-    }
-    if (flags & BT_GATT_WRITE_FLAG_PREPARE) {
-        /* Queue phase of an ATT Write Long: validate bounds, commit nothing. */
-        return len;
-    }
-
-    int64_t now = k_uptime_get();
-
-    /* ---- Transport (A): ATT Write Long continuation (offset > 0) ---------- */
-    if (offset > 0) {
-        if (offset != tmg_asm_len) {
-            LOG_WRN("tmg write-long discontinuity (offset=%u expected=%u)", offset, tmg_asm_len);
-            tmg_asm_len = 0;
-            return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
-        }
-        memcpy(&tmg_asm_buf[offset], data, len);
-        tmg_asm_len = (uint16_t)(offset + len);
-        tmg_asm_last_ms = now;
-        if (tmg_apply_wire(tmg_asm_buf, tmg_asm_len) == 0) {
-            (void)tmg_save();
-            tmg_asm_len = 0;
-        }
-        return len;
-    }
-
-    /* ---- offset == 0: a single complete write, OR transport (B) ----------- */
-
-    /* Case 1 — FAST PATH: this write alone is a complete, valid wire. */
-    if (tmg_apply_wire(data, len) == 0) {
-        (void)tmg_save();
-        tmg_asm_len = 0;
-        return len;
-    }
-
-    /* Case 2 — continuation of a plain chunked transfer already in progress. */
-    if (tmg_asm_len > 0 && (now - tmg_asm_last_ms) <= TMG_ASM_TIMEOUT_MS) {
-        uint16_t expected = tmg_expected_len(tmg_asm_buf);
-        if (expected != 0 && (uint32_t)tmg_asm_len + len <= expected) {
-            memcpy(&tmg_asm_buf[tmg_asm_len], data, len);
-            tmg_asm_len = (uint16_t)(tmg_asm_len + len);
-            tmg_asm_last_ms = now;
-            if (tmg_asm_len < expected) {
-                return len; /* still assembling; await more chunks */
-            }
-            if (tmg_apply_wire(tmg_asm_buf, tmg_asm_len) == 0) {
-                (void)tmg_save();
-                tmg_asm_len = 0;
-                return len;
-            }
-            LOG_WRN("tmg chunked wire complete but rejected; dropping");
-            tmg_asm_len = 0;
-            return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
-        }
-        LOG_WRN("tmg chunked restart (staged=%u expected=%u chunk=%u)", tmg_asm_len, expected, len);
-        /* stale header / overflow: fall through and try to start fresh below */
-    }
-
-    /* Case 3 — start a NEW transfer. The first chunk must look like a plausible
-     * header that still needs more bytes; an exactly-complete one hit Case 1. */
-    if (len < TMG_WIRE_HDR) {
-        tmg_asm_len = 0;
-        LOG_WRN("tmg write: %u bytes, too short for a header; rejected", len);
+    case TORABO_WIRE_ASM_REJECT_OFFSET:
+        return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+    default:
         return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
     }
-    uint16_t expected = tmg_expected_len(data);
-    if (expected == 0 || len >= expected) {
-        tmg_asm_len = 0;
-        LOG_WRN("tmg write: not a valid header start nor a continuation; rejected");
-        return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
-    }
-    memcpy(tmg_asm_buf, data, len); /* offset == 0 */
-    tmg_asm_len = len;
-    tmg_asm_last_ms = now;
-    return len;
 }
 
 /* clang-format off */

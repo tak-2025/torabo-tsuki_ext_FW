@@ -30,6 +30,15 @@
 #define CONFIG_ZMK_STUDIO_TORABO_TUNNEL 1
 #define CONFIG_ZMK_TIMING_CONFIG 1
 
+/* ---- the torabo tunnel's blob budget --------------------------------------
+ * The trackpad's WRITE guard (docs/BACKLOG.md B-1) refuses a device_count whose
+ * READ wire would outgrow this. 2048 is the Kconfig default, and what the field
+ * firmware actually runs (fw-test leaves it unset), so the guard is fixtured on
+ * the number that decides real behavior. Registering the trackpad on the tunnel
+ * is what makes the budget apply at all, hence the _TUNNEL symbol too. */
+#define CONFIG_ZMK_TRACKPAD_CONFIG_TUNNEL 1
+#define CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE 2048
+
 /* ---- led: which halves carry an LED, and which half is central ------------
  * LEFT+RIGHT present, central is RIGHT (CENTRAL_IS_LEFT left undefined) =>
  * caps byte 0x03 in both the led wire and the caps descriptor. */

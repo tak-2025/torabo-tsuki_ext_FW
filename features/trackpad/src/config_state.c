@@ -35,7 +35,6 @@
 
 LOG_MODULE_REGISTER(tp_config, CONFIG_ZMK_TRACKPAD_CONFIG_LOG_LEVEL);
 
-#define TP_WIRE_MAGIC 0x7470u /* "tp" */
 #define TP_WIRE_VERSION_V1 1u
 #define TP_WIRE_VERSION_V2 2u
 #define TP_WIRE_VERSION_V3 3u
@@ -66,19 +65,39 @@ uint16_t tp_wire_len_for(uint8_t device_count, uint8_t layer_count) {
                           (TP_WIRE_DEV_HDR_V3 + (uint32_t)layer_count * TP_WIRE_LAYER_V2));
 }
 
-/* v2/v3 share the layer stride; only the device header differs, and it is chosen
- * by the VERSION, never by the flags byte. */
-static uint16_t tp_wire_len_vn(uint8_t device_count, uint8_t layer_count, bool has_gestures,
-                               uint8_t dev_hdr) {
-    uint32_t stride = TP_WIRE_AXIS * 2u + (has_gestures ? TP_WIRE_GEST : 0u);
+/* Total wire length a blob starting with this header claims, or 0 if the header
+ * is not a plausible start of one (bad magic / unknown version / device or
+ * layer count out of range). This is the SOLE place that turns a header's
+ * shape into a byte length: tp_apply_wire()'s exact-length check below calls it
+ * directly on the same buffer it is validating, and the GATT write assembler
+ * (gatt_service.c) calls it for chunk framing on a possibly-incomplete header.
+ * Both therefore always agree on where a wire ends. */
+uint16_t tp_expected_len(const uint8_t *hdr) {
+    if (!hdr || (uint16_t)(hdr[0] | (hdr[1] << 8)) != TP_WIRE_MAGIC) {
+        return 0;
+    }
+    uint8_t version = hdr[2];
+    uint8_t device_count = hdr[3];
+    uint8_t layer_count = hdr[4];
+    uint8_t flags = hdr[5];
+    if (device_count > TP_MAX_DEVICES || layer_count > TP_MAX_LAYERS) {
+        return 0;
+    }
+    uint32_t stride;
+    uint32_t dev_hdr = TP_WIRE_DEV_HDR;
+    if (version == 3u) {
+        /* v3 = v2 layers with a 5B device header (coast block). */
+        stride = TP_WIRE_AXIS * 2u + ((flags & TP_FLAG_GESTURES) ? TP_WIRE_GEST : 0u);
+        dev_hdr = TP_WIRE_DEV_HDR_V3;
+    } else if (version == 2u) {
+        stride = TP_WIRE_AXIS * 2u + ((flags & TP_FLAG_GESTURES) ? TP_WIRE_GEST : 0u);
+    } else if (version == 1u) {
+        stride = TP_WIRE_LAYER_V1;
+    } else {
+        return 0; /* unknown version: not stageable */
+    }
     return (uint16_t)(TP_WIRE_HDR +
                       (uint32_t)device_count * (dev_hdr + (uint32_t)layer_count * stride));
-}
-
-static uint16_t tp_wire_len_v1(uint8_t device_count, uint8_t layer_count) {
-    return (uint16_t)(TP_WIRE_HDR +
-                      (uint32_t)device_count *
-                          (TP_WIRE_DEV_HDR + (uint32_t)layer_count * TP_WIRE_LAYER_V1));
 }
 
 /* ---- defaults == current fixed torabo-trackpad overlay behavior ----------- */
@@ -280,7 +299,7 @@ static int apply_v2_v3(const uint8_t *buf, uint16_t len, uint8_t device_count, u
                        uint8_t flags, bool has_coast) {
     bool has_gest = (flags & TP_FLAG_GESTURES) != 0;
     const uint8_t dev_hdr = has_coast ? (uint8_t)TP_WIRE_DEV_HDR_V3 : (uint8_t)TP_WIRE_DEV_HDR;
-    uint16_t want = tp_wire_len_vn(device_count, layer_count, has_gest, dev_hdr);
+    uint16_t want = tp_expected_len(buf); /* single source of truth (see above) */
     if (len != want) {
         LOG_WRN("tp wire v%d bad len %u (want %u)", has_coast ? 3 : 2, len, want);
         return -EINVAL;
@@ -323,7 +342,7 @@ static int apply_v2_v3(const uint8_t *buf, uint16_t len, uint8_t device_count, u
 }
 
 static int apply_v1(const uint8_t *buf, uint16_t len, uint8_t device_count, uint8_t layer_count) {
-    uint16_t want = tp_wire_len_v1(device_count, layer_count);
+    uint16_t want = tp_expected_len(buf); /* single source of truth (see above) */
     if (len != want) {
         LOG_WRN("tp wire v1 bad len %u (want %u)", len, want);
         return -EINVAL;
@@ -369,6 +388,27 @@ int tp_apply_wire(const uint8_t *buf, uint16_t len) {
         LOG_WRN("tp wire dc %u/lc %u out of range", device_count, layer_count);
         return -EINVAL;
     }
+
+    /* docs/BACKLOG.md B-1 guard (refactor phase 5). A WRITE is short — it may be
+     * v1, or carry fewer layers — but the READ it turns into is always full v3 at
+     * TP_MAX_LAYERS. Accepting a device_count whose READ no longer fits the
+     * tunnel's blob budget would leave READ permanently in ERROR (the tunnel
+     * refuses rather than truncates), and the config is persisted, so a power
+     * cycle would not clear it. Refuse the write instead: nothing is applied, the
+     * previous config stays live, and the settings window keeps working.
+     *
+     * Compiled out entirely when this build has no trackpad tunnel window — with
+     * no tunnel there is no blob budget to overrun, and the GATT path streams
+     * with Read Blob, so any length is readable. The Kconfig default is 2048. */
+#if defined(CONFIG_ZMK_TRACKPAD_CONFIG_TUNNEL) &&                                                  \
+    defined(CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE)
+    if (!tp_read_fits(device_count, (uint16_t)CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE)) {
+        LOG_WRN("tp wire dc %u would READ back as %u B > tunnel blob cap %u; rejected",
+                device_count, tp_wire_len_for(device_count, TP_MAX_LAYERS),
+                (unsigned)CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE);
+        return -EINVAL;
+    }
+#endif
 
     if (version == TP_WIRE_VERSION_V3) {
         return apply_v2_v3(buf, len, device_count, layer_count, flags, true);

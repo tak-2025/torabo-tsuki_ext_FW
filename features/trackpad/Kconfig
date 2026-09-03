@@ -10,26 +10,29 @@ menuconfig ZMK_TRACKPAD_CONFIG
 
 if ZMK_TRACKPAD_CONFIG
 
-config ZMK_TRACKPAD_CONFIG_BLE
-    bool "Expose trackpad settings over a BLE GATT service"
-    depends on BT
-    default y
-    help
-      Custom encrypted GATT service (e1f4ac00) to read/write the settings live.
-      The v2 wire can exceed one ATT MTU, so enable CONFIG_BT_ATT_PREPARE_COUNT
-      (>0) in the build so the GATT window can reassemble a Write Long.
+module = ZMK_TRACKPAD_CONFIG
 
-config ZMK_TRACKPAD_CONFIG_TUNNEL
-    bool "Expose the trackpad settings over the Studio RPC torabo tunnel"
-    depends on ZMK_STUDIO_TORABO_TUNNEL
-    default y
-    help
-      Register the settings with the torabo tunnel so they are reachable over
-      whichever transport Studio RPC is using (USB serial included).
-      Carries the exact same wire blob as the GATT service (feature id 0x0C), and
-      coexists with it. No reassembly here: RPC delivers a whole message. A wire
-      larger than CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE (4 devices at 20
-      layers encodes 3054 B) is refused rather than truncated; raise it there.
+# BLE detail (was CONFIG_ZMK_TRACKPAD_CONFIG_BLE's own help; kept here since
+# Kconfig help text can't take a $(var) — see
+# features/common/Kconfig.template.torabo_ble):
+#   Custom encrypted GATT service (e1f4ac00) to read/write the settings live.
+#   The v2 wire can exceed one ATT MTU, so enable CONFIG_BT_ATT_PREPARE_COUNT
+#   (>0) in the build so the GATT window can reassemble a Write Long.
+torabo-thing = "trackpad settings"
+rsource "../common/Kconfig.template.torabo_ble"
+
+# TUNNEL detail (was CONFIG_ZMK_TRACKPAD_CONFIG_TUNNEL's own help tail — keep
+# this one fully, it documents real refusal behavior, not just book-keeping):
+#   Carries the exact same wire blob as the GATT service (feature id 0x0C),
+#   and coexists with it. No reassembly here: RPC delivers a whole message. A
+#   wire larger than CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE (4 devices
+#   at 20 layers encodes 3066 B) is refused rather than truncated; raise it
+#   there. With this option on, a WRITE that declares a device_count whose
+#   READ wire would exceed that budget is also refused up front
+#   (docs/BACKLOG.md B-1), so forgetting to raise it can no longer leave READ
+#   permanently in error.
+torabo-thing = "the trackpad settings"
+rsource "../common/Kconfig.template.torabo_tunnel"
 
 config ZMK_TRACKPAD_CONFIG_DEV0_META
     int "Device 0 identity metadata byte"
@@ -78,7 +81,6 @@ config ZMK_TRACKPAD_CONFIG_DTAP_WINDOW_MS
       when a double-tap binding is assigned for the active layer/device, so the
       added latency applies only when double-tap is actually configured.
 
-module = ZMK_TRACKPAD_CONFIG
 module-str = ZMK Trackpad Config
 source "subsys/logging/Kconfig.template.log_config"
 

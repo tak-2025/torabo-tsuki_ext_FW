@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Shared shape of the "expose this feature over BLE" sub-option that every
+# torabo feature module repeats identically (type/depends/default — only the
+# prompt's noun phrase differs), sourced the same $(var) way Zephyr's own
+# subsys/logging/Kconfig.template.log_config is. PLAN-ext-fw-refactor.md phase
+# 6 (B-3): symbol names, "depends on" and "default" are byte-for-byte what
+# every feature already had; only the boilerplate that was identical across
+# all of them moved here.
+#
+# NOTE on help text: Kconfig does not macro-expand text inside a "help"
+# block (only single-line properties like "bool"/"depends on"/"default" are
+# $(var)-expanded — verified against this workspace's own
+# scripts/kconfig/kconfiglib.py). So the per-feature detail that used to live
+# in each _BLE option's own help (GATT UUID, payload size, MTU notes) cannot
+# be reproduced here without going stale-looking (a literal "$(x)" would show
+# up unexpanded). It is kept, verbatim, as a plain "#" comment directly above
+# where each feature sources this file, so nothing is lost from the repo —
+# it is just no longer shown in the interactive menuconfig help pane for the
+# _BLE item itself (the feature's own top-level menuconfig help, and its
+# src/*.c, still document it).
+#
+# Required variables (set immediately before sourcing — see any feature's
+# Kconfig for a worked example):
+#   module       - the feature's own Kconfig symbol, e.g. ZMK_ENCODER_CONFIG.
+#                  Produces $(module)_BLE.
+#   torabo-thing - short noun phrase for the prompt, e.g.
+#                  "the encoder settings" (matches the original prompt verbatim).
+
+config $(module)_BLE
+	bool "Expose $(torabo-thing) over a BLE GATT service"
+	depends on BT
+	default y
+	help
+	  Encrypted GATT service exposing this feature's runtime settings for
+	  live read/write from Torabo-Studio. See the comment immediately above
+	  where this option is enabled (or the module's own src/*.c) for the
+	  exact UUID and wire size.

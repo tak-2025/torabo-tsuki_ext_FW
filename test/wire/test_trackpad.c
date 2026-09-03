@@ -97,6 +97,8 @@ static uint8_t expected_meta(uint8_t d) {
     }
 }
 
+static void tp_blob_guard(void);
+
 void test_trackpad(void) {
     torabo_test_begin("trackpad tp wire v3");
 
@@ -274,4 +276,96 @@ void test_trackpad(void) {
         T_EQ_INT(out[a + 3], TP_BEH_NONE, "unknown behavior clamps to NONE");
         T_EQ_INT(out[TP_WIRE_HDR + 3], TP_COAST_FRICTION_MAX, "coast friction clamps to MAX");
     }
+
+    tp_blob_guard();
+}
+
+/* ---------------------------------------------------------------------------
+ * docs/BACKLOG.md B-1: the WRITE guard on the tunnel blob budget.
+ *
+ * tp_apply_wire() refuses a device_count whose READ wire (always full v3 at
+ * TP_MAX_LAYERS) would outgrow CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE.
+ * Without it, a 3- or 4-device write is accepted and PERSISTED, after which the
+ * tunnel's READ errors forever (it refuses rather than truncating).
+ *
+ * Two levels are checked:
+ *  - tp_read_fits(), the predicate the guard is built on — exercised exactly at
+ *    the boundary, which the real Kconfig numbers cannot reach (with any device
+ *    count and any of the swept layer counts, tp_wire_len_for never lands on
+ *    2048 precisely), so the "== cap still fits" edge is tested by feeding
+ *    tp_read_fits the exact encoded length as the cap.
+ *  - tp_apply_wire() itself, for EVERY device count, against the real 2048 the
+ *    field firmware runs: accepted iff the READ length fits. At 20 layers that
+ *    makes 1 and 2 devices pass (771 / 1536 B) and 3 and 4 fail (2301 / 3066 B);
+ *    at 10 and 4 layers nothing exceeds the cap and everything passes, which is
+ *    exactly why the field firmware has never tripped over this.
+ * ------------------------------------------------------------------------- */
+static void tp_blob_guard(void) {
+    torabo_test_begin("trackpad tunnel-blob WRITE guard (BACKLOG B-1)");
+
+    static uint8_t wire[TP_WIRE_CAP];
+    static uint8_t before[TP_WIRE_CAP];
+    static uint8_t after[TP_WIRE_CAP];
+    uint16_t before_len = 0, after_len = 0;
+
+    const uint8_t layers = (uint8_t)TP_MAX_LAYERS;
+
+    /* ---- the predicate, exactly at the boundary --------------------------- */
+    for (uint8_t d = 1; d <= TP_MAX_DEVICES; d++) {
+        const uint16_t exact = tp_wire_len_for(d, layers);
+        T_CHECK(tp_read_fits(d, exact), "a cap EQUAL to the READ length still fits");
+        T_CHECK(!tp_read_fits(d, (uint16_t)(exact - 1)), "one byte under the READ length does not");
+        T_CHECK(tp_read_fits(d, (uint16_t)(exact + 1)), "one byte over the READ length fits");
+    }
+
+    /* ---- the guard, on the cap the field firmware actually runs ----------- */
+    const uint16_t cap = (uint16_t)CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE;
+
+    /* Start from a known-good config and remember exactly what READ returns. */
+    uint16_t len = build_v3(wire, sizeof(wire), TP_DEFAULT_DEVICE_COUNT, layers);
+    T_EQ_INT(tp_apply_wire(wire, len), 0, "baseline write accepted");
+    T_EQ_INT(tp_encode_wire(before, sizeof(before), &before_len), 0, "baseline READ encodes");
+
+    for (uint8_t d = 1; d <= TP_MAX_DEVICES; d++) {
+        const uint16_t read_len = tp_wire_len_for(d, layers);
+        const bool fits = read_len <= cap;
+        char what[128];
+
+        len = build_v3(wire, sizeof(wire), d, layers);
+        snprintf(what, sizeof(what), "device_count=%u (READ %u B, cap %u) -> %s", d, read_len, cap,
+                 fits ? "accepted" : "REJECTED");
+        T_EQ_INT(tp_apply_wire(wire, len), fits ? 0 : -EINVAL, what);
+
+        if (!fits) {
+            /* A rejected write must leave the live snapshot byte-identical: the
+             * whole point is that the device keeps working. */
+            T_EQ_INT(tp_encode_wire(after, sizeof(after), &after_len), 0, "READ still encodes");
+            T_EQ_INT(after_len, before_len, "a rejected write did not change the READ length");
+            T_EQ_MEM(after, before, before_len, "a rejected write left the live config untouched");
+        } else {
+            /* Accepted: re-baseline so the next iteration compares against the
+             * config that is actually live. */
+            T_EQ_INT(tp_encode_wire(before, sizeof(before), &before_len), 0, "re-baseline READ");
+        }
+    }
+
+    /* The v1 form is short (6 + d*(2 + layers*6)) yet READs back as full v3, so
+     * the guard has to fire on it too — this is the shape most likely to sneak a
+     * big device_count past a length-only check. */
+    if (!tp_read_fits(TP_MAX_DEVICES, cap)) {
+        const uint16_t v1_len = tp_len_v1(TP_MAX_DEVICES, layers);
+        memset(wire, 0, sizeof(wire));
+        wire[0] = TP_MAGIC_LO;
+        wire[1] = TP_MAGIC_HI;
+        wire[2] = 1;
+        wire[3] = TP_MAX_DEVICES;
+        wire[4] = layers;
+        wire[5] = 0;
+        T_EQ_INT(tp_apply_wire(wire, v1_len), -EINVAL,
+                 "a SHORT v1 write is rejected too when its v3 READ would not fit");
+    }
+
+    /* Restore the default config for any test that runs after this one. */
+    len = build_v3(wire, sizeof(wire), TP_DEFAULT_DEVICE_COUNT, layers);
+    T_EQ_INT(tp_apply_wire(wire, len), 0, "restore the default device count");
 }

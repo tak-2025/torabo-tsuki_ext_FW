@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Shared shape of the "expose this feature over the Studio RPC torabo tunnel"
+# sub-option every torabo feature module repeats identically
+# (type/depends/default). Sibling of Kconfig.template.torabo_ble — see that
+# file's header for the full rationale (PLAN-ext-fw-refactor.md phase 6, B-3)
+# and why per-feature detail (feature id, exact wire size) lives as a "#"
+# comment above the source line instead of in this shared help text.
+#
+# Required variables (set immediately before sourcing):
+#   module       - the feature's own Kconfig symbol, e.g. ZMK_ENCODER_CONFIG.
+#                  Produces $(module)_TUNNEL.
+#   torabo-thing - short noun phrase for the prompt, e.g.
+#                  "the encoder settings" (matches the original prompt
+#                  verbatim; may differ slightly in article from the _BLE
+#                  call for the same feature, e.g. "trackpad settings" vs.
+#                  "the trackpad settings" — set it again here, it is not
+#                  inherited from the _BLE source).
+
+config $(module)_TUNNEL
+	bool "Expose $(torabo-thing) over the Studio RPC torabo tunnel"
+	depends on ZMK_STUDIO_TORABO_TUNNEL
+	default y
+	help
+	  Register the settings with the torabo tunnel so they are reachable
+	  over whichever transport Studio RPC is using (USB serial included).
+	  Carries the exact same wire blob as the GATT service, and coexists
+	  with it. See the comment immediately above where this option is
+	  enabled (or the module's own src/*.c) for the feature id.

@@ -62,3 +62,6 @@ void test_combos(void);
 void test_caps(void);
 void test_live_feed(void);
 void test_contracts(void);
+void test_coast(void);
+void test_binding(void);
+void test_wire_asm(void);

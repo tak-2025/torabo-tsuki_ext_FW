@@ -1,6 +1,9 @@
 if(CONFIG_ZMK_DYNAMIC_KEYMAP)
     zephyr_library()
     zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+    # Shared header-only helpers (the tunnel apply+save wrapper, the simple GATT
+    # settings window).
+    zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../common/include)
 
     # Validated, double-buffered RAM store + NVS persistence (always).
     zephyr_library_sources(src/config_state.c)

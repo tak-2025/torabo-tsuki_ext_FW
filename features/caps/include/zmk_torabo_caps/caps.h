@@ -98,11 +98,16 @@ enum torabo_feature_id {
  *                fw_patch u8 | feature_count u8 | _rsv u8
  *   per feature (4B): id u8 | wire_ver u8 | caps u16
  *
- * 8 + 10*4 = 48 B at most — a single read.
+ * 8 + 16*4 = 72 B at most (16 slots, 10 used by the features above today).
+ * The wire itself is still count-driven (feature_count), so the current
+ * 10-feature build still encodes exactly 48 B — unchanged from before this
+ * cap was raised (PLAN-ext-fw-refactor.md phase 6, B-4). 48 B fits one ATT
+ * read; a future build with feature_count > 10 grows past that and needs
+ * ATT Read Long (Blob Read), same as any other blob that outgrows one MTU.
  */
 #define TORABO_CAPS_HDR 8
 #define TORABO_CAPS_FEAT 4
-#define TORABO_CAPS_MAX_FEATURES 10
+#define TORABO_CAPS_MAX_FEATURES 16
 #define TORABO_CAPS_WIRE_CAP (TORABO_CAPS_HDR + TORABO_CAPS_MAX_FEATURES * TORABO_CAPS_FEAT)
 
 int torabo_caps_encode(uint8_t *buf, uint16_t cap, uint16_t *out_len);

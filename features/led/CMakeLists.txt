@@ -1,6 +1,8 @@
 if(CONFIG_ZMK_LED_CONFIG)
     zephyr_library()
     zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+    # Shared header-only helpers (e.g. the tunnel apply+save wrapper macro).
+    zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../common/include)
 
     # The renderer owns the GPIOs and runs on BOTH halves.
     zephyr_library_sources(src/led_render.c)
