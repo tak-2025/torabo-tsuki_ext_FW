@@ -79,7 +79,7 @@ static int enc_accept_data(struct zmk_behavior_binding *binding,
         struct sensor_value remainder = data->remainder[sensor_index][event.layer];
         remainder.val1 += value.val1;
         remainder.val2 += value.val2;
-        if (remainder.val2 >= 1000000 || remainder.val2 <= 1000000) {
+        if (remainder.val2 >= 1000000 || remainder.val2 <= -1000000) {
             remainder.val1 += remainder.val2 / 1000000;
             remainder.val2 %= 1000000;
         }

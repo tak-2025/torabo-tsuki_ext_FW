@@ -17,6 +17,17 @@ config TORABO_RESERVED_LAYERS
 	  Keep this Kconfig value equal to that number (the firmware-builder emits
 	  both together).
 
+	  ⚠ C-5 (docs/COMPATIBILITY.md, PLAN-ext-fw-refactor.md phase 7): this value
+	  and the DTS_EXTRA_CPPFLAGS macro are two independent numbers with no build-time
+	  check that they agree. If they drift apart, torabo_caps (features/caps/src/caps.c,
+	  build_features()'s TORABO_FEAT_RESERVED_LAYERS entry) advertises THIS
+	  Kconfig value to the app as the reserved-layer count, while the devicetree
+	  actually injected however many layers the DTS_EXTRA_CPPFLAGS macro said —
+	  a silent lie the app cannot detect (it has no independent way to see the
+	  real layer count). Getting them wrong does not break the build or the
+	  firmware's own behavior; it only misleads the app's layer picker. Always
+	  change both numbers together.
+
 	  Assumes the torabo-tsuki 66-key layout (rows 12/12/14/14/14). Do NOT also
 	  declare reserved layers in your keymap.keymap when using this snippet (the
 	  counts would stack).

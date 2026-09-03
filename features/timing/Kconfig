@@ -52,6 +52,13 @@ config ZMK_TIMING_CONFIG_DEBOUNCE_PRESS_MS
       at runtime (the firmware still runs on the real devicetree value until a
       write happens) but the app will show the wrong starting number.
 
+      ⚠ C-6 (docs/COMPATIBILITY.md, PLAN-ext-fw-refactor.md phase 7): this is a
+      manual copy of the shield overlay's kscan debounce-press-ms, kept in sync
+      by hand — there is no build-time check the two agree, and (unlike
+      TORABO_RESERVED_LAYERS / C-5) this value never reaches torabo_caps, so a
+      mismatch is invisible until someone reads the "current" value in the app
+      and compares it to the overlay by eye.
+
 config ZMK_TIMING_CONFIG_DEBOUNCE_RELEASE_MS
     int "Devicetree debounce-release-ms of the matrix kscan"
     default 5
