@@ -61,7 +61,7 @@
 <body>
 <header>
   <h1>torabo-tsuki ファームウェアビルダー <span class="badge">v1 physical model</span></h1>
-  <p>各サイドの「標準FFC・拡張基盤・拡張FFC」に付ける現物を選ぶと build.yaml / conf / west.yml を生成します。生成物を fork の各ファイルに置き換えてビルドしてください。値（コンボ内容・速度等）は焼いた後 BLE で編集します。</p>
+  <p>各サイドの「標準モジュール・拡張基盤・拡張モジュール」に付ける現物を選ぶと build.yaml / conf / west.yml を生成します。生成物を fork の各ファイルに置き換えてビルドしてください。値（コンボ内容・速度等）は焼いた後 BLE で編集します。</p>
 </header>
 
 <div class="wrap">
@@ -91,12 +91,12 @@
 
     <div class="card">
       <h2>ハードウェア構成（各サイド）</h2>
-      <div class="hint">各サイド = 標準FFC 1本 ＋（拡張基盤を付ければ）拡張FFC 1本。標準FFCは1デバイス排他（ボール/パッド/エンコーダは同じピンを奪い合う）。エンコーダは標準・拡張どちらにも可。トラックボールは標準FFCのみ（拡張にSPIなし）。</div>
+      <div class="hint">各サイド = 標準モジュール 1つ ＋（拡張基盤を付ければ）拡張モジュール 1つ。標準モジュールは1デバイス排他（ボール/パッド/エンコーダは同じピンを奪い合う）。エンコーダは標準・拡張どちらにも可。トラックボールは標準モジュールのみ（拡張にSPIなし）。</div>
 
       <div class="sideblk" id="blk_left">
         <h3>左 (left) <span class="badge" id="role_left"></span></h3>
-        <div class="field"><span>標準FFC</span>
-          <select class="std-sel" data-side="left" title="左 標準FFC">
+        <div class="field"><span>標準モジュール</span>
+          <select class="std-sel" data-side="left" title="左 標準モジュール">
             <option value="none">なし</option>
             <option value="ball">トラックボール</option>
             <option value="pad">ミニトラックパッド</option>
@@ -108,24 +108,18 @@
             <option value="fpc">LEDなし</option>
             <option value="led">LEDあり</option>
           </select></div>
-        <div class="field indent row-extdev" data-side="left"><span>└ 拡張FFC</span>
-          <select class="extdev-sel" data-side="left" title="左 拡張FFC">
+        <div class="field indent row-extdev" data-side="left"><span>└ 拡張モジュール</span>
+          <select class="extdev-sel" data-side="left" title="左 拡張モジュール">
             <option value="none">なし</option>
             <option value="pad">ミニトラックパッド</option>
             <option value="encoder">ロータリーエンコーダ</option>
-          </select></div>
-        <label class="row row-led" data-side="left"><input type="checkbox" class="useled-chk" data-side="left" checked> 拡張LEDを使う</label>
-        <div class="field indent row-ledmode" data-side="left"><span>└ LED制御</span>
-          <select class="ledmode-sel" data-side="left" title="LEDの制御方式">
-            <option value="legacy">従来（固定・実績あり）</option>
-            <option value="live">ライブ設定（Studioで編集）</option>
           </select></div>
       </div>
 
       <div class="sideblk" id="blk_right">
         <h3>右 (right) <span class="badge" id="role_right"></span></h3>
-        <div class="field"><span>標準FFC</span>
-          <select class="std-sel" data-side="right" title="右 標準FFC">
+        <div class="field"><span>標準モジュール</span>
+          <select class="std-sel" data-side="right" title="右 標準モジュール">
             <option value="none">なし</option>
             <option value="ball">トラックボール</option>
             <option value="pad">ミニトラックパッド</option>
@@ -137,17 +131,11 @@
             <option value="fpc">LEDなし</option>
             <option value="led">LEDあり</option>
           </select></div>
-        <div class="field indent row-extdev" data-side="right"><span>└ 拡張FFC</span>
-          <select class="extdev-sel" data-side="right" title="右 拡張FFC">
+        <div class="field indent row-extdev" data-side="right"><span>└ 拡張モジュール</span>
+          <select class="extdev-sel" data-side="right" title="右 拡張モジュール">
             <option value="none">なし</option>
             <option value="pad">ミニトラックパッド</option>
             <option value="encoder">ロータリーエンコーダ</option>
-          </select></div>
-        <label class="row row-led" data-side="right"><input type="checkbox" class="useled-chk" data-side="right" checked> 拡張LEDを使う</label>
-        <div class="field indent row-ledmode" data-side="right"><span>└ LED制御</span>
-          <select class="ledmode-sel" data-side="right" title="LEDの制御方式">
-            <option value="legacy">従来（固定・実績あり）</option>
-            <option value="live">ライブ設定（Studioで編集）</option>
           </select></div>
       </div>
     </div>
@@ -202,7 +190,7 @@ const SNIP = {
   tb:'input-trackball', tpS:'input-trackpad-mini',
   tpX:'input-trackpad-ext',
   lst:'input-listener', spl0:'input-split', rcv0:'input-split-listener',
-  led:'torabo-status-led-ext', liveExt:'torabo-trackpad-live-ext', liveSplit:'torabo-trackpad-live-split',
+  liveExt:'torabo-trackpad-live-ext', liveSplit:'torabo-trackpad-live-split',
   fTrackball:'torabo-trackball', fMacros:'torabo-macros', fCombos:'torabo-combos', fLayers:'torabo-reserved-layers',
   // エンコーダ（回転）: 実装済み。物理側 ＋（相手が peripheral なら）central 受け
   encS:'input-encoder',     encRecv:'input-encoder-recv',        // 標準FFC (A=P0.18/B=P0.16)
@@ -219,7 +207,7 @@ const SNIP = {
   encBtnRecv:'torabo-encoder-btn-recv',              // central: split(reg2) を受けて発火
   encBtnLocal:'torabo-encoder-btn-local',            // central 標準FFC: ボタン P0.20（中継不要）
   encBtnLocalExt:'torabo-encoder-btn-local-ext',     // central 拡張FFC: ボタン P0.31（中継不要）
-  // 拡張LED（ライブ設定）。旧 torabo-status-led-ext とは同じGPIOを奪い合うので排他。
+  // 拡張LED（ライブ設定）。Studio のLEDタブで編集する唯一のLED方式。
   ledLive:'torabo-led-live',                        // central: ルール表＋GATT＋両側の判断
   ledPeriph:'torabo-led-ext-periph',                // peripheral: 言われた色を出すだけ＋切断時の自力表示
   // ライブフィード（キー/レイヤーを NOTIFY で push）。Torabo-Float オーバーレイ用。
@@ -248,8 +236,8 @@ const state = {
   keyboardName:'torabo-tsuki',
   features:{ trackball:true, macros:true, combos:true, layers:true, layersN:10, trackpadlive:false, liveFeed:true },
   sides:{
-    left:  { std:'none', ext:'none', extDev:'none', useLed:true, ledMode:'legacy' },
-    right: { std:'ball', ext:'none', extDev:'none', useLed:true, ledMode:'legacy' },
+    left:  { std:'none', ext:'none', extDev:'none' },
+    right: { std:'ball', ext:'none', extDev:'none' },
   },
 };
 
@@ -339,8 +327,7 @@ function buildModel(){
   else if (pd.ext==='encoder') P.push(SNIP.encBtnSplitExt);
   // 拡張LED（peripheral 側）: 表示器として動く。パッドの有無に関わらず点灯する
   // （実機確認 2026-08-29。旧実装は「パッドがレールを上げないと光らない」前提だった）。
-  if (state.sides[periph].ext==='led' && state.sides[periph].useLed
-      && state.sides[central].ledMode==='live')
+  if (state.sides[periph].ext==='led')
     P.push(SNIP.ledPeriph);
   // タイミング（デバウンス）の受け側。central の torabo-timing と対で常に入れる。
   // これが無いと、アプリで書いたデバウンス値が central の kscan にしか効かない。
@@ -372,16 +359,14 @@ function buildModel(){
   }
   // 相手側にパッドがあれば split ライブ設定
   if (state.features.trackpadlive && (pd.std==='pad' || pd.ext==='pad')) C.push(SNIP.liveSplit);
-  // 拡張LED。2方式あり、同じGPIOを奪い合うので排他。
-  //   legacy = torabo-status-led-ext … 固定動作（プロファイル色＋切断赤）。実績あり
-  //   live   = torabo-led-live       … ルール表＋GATT。Studioで編集。実機検証済み
-  // live は central が「頭脳」なので、どちらか一方にでもLEDがあれば central に載せる
+  // 拡張LED（torabo-led-live）。ルール表＋GATT で Studio から編集する。
+  // central が「頭脳」なので、どちらか一方にでもLEDがあれば central に載せる
   // （左だけにLEDがある構成で載せ忘れると、左は誰にも制御されない置物になる）。
-  const ledWorks = side => state.sides[side].ext==='led' && state.sides[side].useLed
-                           && sideDevices(side).ext==='pad';
-  const ledLiveOn = (ledWorks('left') || ledWorks('right')) && state.sides[central].ledMode==='live';
-  if (ledLiveOn)                              C.push(SNIP.ledLive);
-  else if (ledWorks(central))                 C.push(SNIP.led);   // 従来版（central のみ）
+  // 光る条件 = LEDあり基盤を選んだこと、それだけ。パッドの有無は関係ない
+  // （実機確認 2026-08-29）。「使う/使わない」チェックは廃止（LEDあり基盤を
+  // 選んで使わない構成に意味がないため。2026-09-02）。
+  const ledWorks = side => state.sides[side].ext==='led';
+  if (ledWorks('left') || ledWorks('right')) C.push(SNIP.ledLive);
   // FW が自分を名乗る（Studio が実在するタブだけ出せるように）。常に入れる。
   C.push(SNIP.caps);
   // 独自設定を USB(Studio RPC) からも読み書きできるようにする。載っている機能の
@@ -445,19 +430,8 @@ function validate(model){
   if (state.features.combos) msgs.push({ k:'warn', t:'コンボ: keymap に combos{} ブロックを置かないこと（純正エンジンと二重所有になりビルド不能/競合）。' });
 
   // 拡張LED — パッドの有無に関わらず点灯する（実機確認 2026-08-29）。
-  if (state.sides[central].ext==='led' && state.sides[central].useLed){
-    if (state.sides[central].ledMode==='live'){
-      msgs.push({ k:'warn', t:'拡張LED（ライブ設定）: ルール表を Studio の LED タブで編集（レイヤー/修飾キー/Caps/電池/切断 を 色×点滅 で割当）。左右独立。' });
-    } else {
-      msgs.push({ k:'warn', t:'拡張LED（従来）: BLEプロファイル切替（色コンボ1.5秒）＋相手側切断（赤を点灯しっぱなし）。実績のある固定動作で、Studio からは変更できません。切断放置は電池を食います（ライブ設定なら点滅にできます）。' });
-    }
-  }
-
-  // 拡張LED — peripheral 側にLED実機があるのに従来方式のままだと、
-  // 従来版（torabo-status-led-ext）は central のLEDしか駆動しないため誰にも制御されず消灯したまま。
-  if (state.sides[periph].ext==='led' && state.sides[periph].useLed
-      && state.sides[central].ledMode==='legacy'){
-    msgs.push({ k:'warn', t:`拡張LED: peripheral（${periph}）側の拡張LEDは「従来（固定）」方式では制御されず、消灯したままになります（従来版は central 側LED専用）。この LED を使うには LED制御を「ライブ設定」（LEDライブ設定）に切り替えてください（central に torabo-led-live、${periph} に torabo-led-ext-periph が載ります）。` });
+  if (state.sides[central].ext==='led'){
+    msgs.push({ k:'warn', t:'拡張LED（ライブ設定）: ルール表を Studio の LED タブで編集（レイヤー/修飾キー/Caps/電池/切断 を 色×点滅 で割当）。左右独立。' });
   }
 
   // トラックパッド ライブ設定
@@ -465,7 +439,7 @@ function validate(model){
     const centralExtPad = cd.ext==='pad';
     const periphPad = pd.std==='pad' || pd.ext==='pad';
     if (!centralExtPad && !periphPad)
-      msgs.push({ k:'err', t:`トラックパッド ライブ設定: 対象のトラックパッドがありません。central（${central}）の拡張FFCをパッドにするか、相手側（${periph}）にパッドを載せてください。` });
+      msgs.push({ k:'err', t:`トラックパッド ライブ設定: 対象のトラックパッドがありません。central（${central}）の拡張モジュールをパッドにするか、相手側（${periph}）にパッドを載せてください。` });
     else {
       const tgt=[centralExtPad?`${central}拡張パッド`:null, periphPad?`${periph}パッド`:null].filter(Boolean).join(' と ');
       msgs.push({ k:'warn', t:`トラックパッド ライブ設定: ${tgt} を Studio のトラックパッドタブで編集→即反映（NVS保存）。既定は 層0/1=移動・層2=横スクロール・層3=縦スクロール。` });
@@ -531,9 +505,8 @@ function genConf(model){
   // 拡張LED: どちらの半分に「実際に光るLED」があるかを FW に教える。
   // FW はこれを capability として Studio に申告し、Studio は実在する側だけ出す。
   // 光る条件 = LEDあり基盤 ＋「拡張LEDを使う」チェック（パッドの有無は関係ない）。
-  const ledOn = side => state.sides[side].ext==='led' && state.sides[side].useLed;
-  const liveLed = state.sides[model.central].ledMode==='live' && (ledOn('left') || ledOn('right'));
-  if (liveLed){
+  const ledOn = side => state.sides[side].ext==='led';
+  if (ledOn('left') || ledOn('right')){
     lines.push(`# 拡張LEDの実在（Studio はこれを見てタブと左右を出し分ける）`);
     lines.push(`CONFIG_ZMK_LED_CONFIG_LEFT_PRESENT=${ledOn('left') ? 'y' : 'n'}`);
     lines.push(`CONFIG_ZMK_LED_CONFIG_RIGHT_PRESENT=${ledOn('right') ? 'y' : 'n'}`);
@@ -615,19 +588,14 @@ function render(){
   document.getElementById('role_left').className  = 'badge ' + (central==='left'?'central':'');
   document.getElementById('role_right').className = 'badge ' + (central==='right'?'central':'');
 
-  // 条件表示（拡張FFC / 拡張LED）
+  // 条件表示（拡張モジュール）
   for (const side of ['left','right']){
     const s = state.sides[side];
     document.querySelector('.row-extdev[data-side='+side+']').style.display = s.ext!=='none' ? '' : 'none';
-    const ledRowOn = (side===central && s.ext==='led');
-    document.querySelector('.row-led[data-side='+side+']').style.display = ledRowOn ? '' : 'none';
-    document.querySelector('.row-ledmode[data-side='+side+']').style.display = (ledRowOn && s.useLed) ? '' : 'none';
-    document.querySelector('.ledmode-sel[data-side='+side+']').value = s.ledMode;
     // セレクタ値の同期
     document.querySelector('.std-sel[data-side='+side+']').value = s.std;
     document.querySelector('.ext-sel[data-side='+side+']').value = s.ext;
     document.querySelector('.extdev-sel[data-side='+side+']').value = s.extDev;
-    document.querySelector('.useled-chk[data-side='+side+']').checked = s.useLed;
   }
 
   // tier バッジ
@@ -669,8 +637,6 @@ document.querySelectorAll('.ext-sel').forEach(s=>s.addEventListener('change', e=
   render();
 }));
 document.querySelectorAll('.extdev-sel').forEach(s=>s.addEventListener('change', e=>{ state.sides[e.target.dataset.side].extDev=e.target.value; render(); }));
-document.querySelectorAll('.useled-chk').forEach(c=>c.addEventListener('change', e=>{ state.sides[e.target.dataset.side].useLed=e.target.checked; render(); }));
-document.querySelectorAll('.ledmode-sel').forEach(s=>s.addEventListener('change', e=>{ state.sides[e.target.dataset.side].ledMode=e.target.value; render(); }));
 
 document.querySelectorAll('button.copy').forEach(b=>b.addEventListener('click', ()=>{
   const txt=document.getElementById(b.dataset.target).textContent;

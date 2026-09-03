@@ -1,4 +1,0 @@
-name: torabo-status-led-ext
-append:
-  EXTRA_DTC_OVERLAY_FILE: torabo-status-led-ext.overlay
-  EXTRA_CONF_FILE: torabo-status-led-ext.conf

@@ -34,7 +34,7 @@ Authoritative enumeration of every valid hardware configuration for the torabo-t
 | `encRecv` | `input-encoder-recv` (central 受け口: encoder device disabled + keymap-sensors ノードで LEN/index 確保。peripheral に標準エンコーダがある central 側に付ける) | **EXISTING**（2026-07-11 実装, 未実機検証）|
 | `encX` | `input-encoder-ext`（＋ central 受けの `input-encoder-ext-recv`）extension-FFC EC11; same split-sensor semantics | **EXISTING**（実装済, 未実機検証）|
 | `btn` | エンコーダ押しボタン。**`kscan-gpio-direct` ではなく input 経路**で実装した（キー位置を消費しないので transform / keymap は無改造）。配置別に `torabo-encoder-btn-local`(central P0.20) / `-local-ext`(central P0.31) / `-split`(periph P0.20) / `-split-ext`(periph P0.31) ＋ central 側の `torabo-encoder-btn-recv` | **EXISTING**（実装済, 未実機検証）|
-| `LED` | `torabo-status-led-ext` (central + extender=FPC+LED only) | EXISTING |
+| `LED` | `torabo-led-live` (central; rule table + GATT, drives both sides) ＋ `torabo-led-ext-periph` (peripheral display side) | EXISTING |
 
 **Tier codes:** `BN` = BUILDABLE-NOW · `ENC` = needs-encoder-FW · `PEXT` = needs-peripheral-extension-FW · `REG1` = needs-reg1-twin. Tiers combine (`ENC+PEXT` etc.).
 **⚠ 2026-08-29 現在、`ENC` / `PEXT` / `REG1` の依存はすべて実装済みで、実効的には全 144 構成が `BN` です。** 以下の tier 列は当時の記録です。
@@ -62,7 +62,7 @@ Side = {
 2. **No trackball on extension** — extension FFC has no SPI. `extensionDevice ∈ {none, pad, encoder}` only.
 3. **Extension device requires an extender:** `extensionDevice ≠ none` ⇒ `extenderType ≠ none`.
 4. `extenderType ≠ none` with `extensionDevice = none` is **legal** (passthrough / LED-only).
-5. `extenderType = fpc-led` adds LED snippets depending on the LED mode (docs/SNIPPETS.md §3/§4). **Legacy** mode (`torabo-status-led-ext`) is central-only: a peripheral-side FPC+LED is electrically fine but stays dark (no FW drives it). **Live** mode: the central gets `torabo-led-live` (rule table + GATT, drives both sides), and a peripheral with `extenderType = fpc-led` (+ ext pad powering the P0.24 rail) additionally gets `torabo-led-ext-periph` (receives (color, pattern) from the central over split).
+5. `extenderType = fpc-led` adds the LED snippets (docs/SNIPPETS.md §3/§4): the central gets `torabo-led-live` (rule table + GATT, drives both sides), and a peripheral with `extenderType = fpc-led` additionally gets `torabo-led-ext-periph` (receives (color, pattern) from the central over split). The legacy fixed-behaviour `torabo-status-led-ext` was removed in favour of this one path.
 6. Encoder is allowed on BOTH connectors (confirmed decision). It uses only GPIO (no POW rail).
 
 ### 1.3 Enumeration of valid per-side states
@@ -95,8 +95,8 @@ Every (device × connector × role) cell. "Central adds" = fragments that go on 
 | Device | Conn | Role | Fragments on that side | Central adds | Status |
 |---|---|---|---|---|---|
 | — always — | — | central | `base` = `studio-rpc-usb-uart` + `split-central` | — | EXISTING |
-| — LED — | ext (extender=FPC+LED) | central | legacy mode: `torabo-status-led-ext` · live mode: `torabo-led-live` | — | EXISTING |
-| — LED — | ext (extender=FPC+LED) | peripheral | live mode only: `torabo-led-ext-periph` (legacy mode drives no peripheral LED — stays dark) | `torabo-led-live` | EXISTING |
+| — LED — | ext (extender=FPC+LED) | central | `torabo-led-live` | — | EXISTING |
+| — LED — | ext (extender=FPC+LED) | peripheral | `torabo-led-ext-periph` | `torabo-led-live` | EXISTING |
 | Trackball | standard | central | `tb` + `lst` | — | EXISTING |
 | Trackball | standard | peripheral | `tb` + `spl0` | `rcv0` | EXISTING |
 | Trackball | extension | any | **INVALID** (no SPI on extension) | — | n/a |

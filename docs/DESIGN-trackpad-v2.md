@@ -142,7 +142,7 @@ tp_binding(4B) = behavior u8, _rsv/mods u8, param u16(LE)
 長さ = 6 + device_count*(2 + layer_count*layer_stride)
 ```
 
-> **サイズ注意**：2デバイス×多レイヤーで wire は数百B に達し得る（例 2dev×5層ジェスチャ有 = 6+2*(2+5*34)=350B）。現行 GATT WRITE は `offset!=0` を拒否＝単発 write のみ（[gatt_service.c](../trackpad/src/gatt_service.c)）なので MTU を超えると書けない。→ **§4.5 で GATT に Write Long（offset 分割受信）対応を追加**し、サイズ上限を撤廃する（flash1回方針なので同時に入れる）。READ は既に offset 対応済み。
+> **サイズ注意**：2デバイス×多レイヤーで wire は数百B に達し得る（例 2dev×5層ジェスチャ有 = 6+2*(2+5*34)=350B）。現行 GATT WRITE は `offset!=0` を拒否＝単発 write のみ（[gatt_service.c](../features/trackpad/src/gatt_service.c)）なので MTU を超えると書けない。→ **§4.5 で GATT に Write Long（offset 分割受信）対応を追加**し、サイズ上限を撤廃する（flash1回方針なので同時に入れる）。READ は既に offset 対応済み。
 
 **後方互換の要**：
 - FW は READ で **常に version=2** を返す（現行値を v2 形で表現）。
@@ -157,7 +157,7 @@ TS/C 同一定義（[tpConfig.ts](https://github.com/tak-2025/Torabo-Studio/blob
 
 ### 4.1 tp_keys — ジェスチャ用リマップ processor（新規）
 
-[tp_pointer.c](../trackpad/src/tp_pointer.c) の兄弟。`INPUT_EV_KEY`（`BTN_0`/`BTN_1` 等）を対象に、`device-id` と現在レイヤーから gesture slot を引き、対応する **binding descriptor を実行時 binding 化して発火**（§4.2）、元イベントは STOP で消費。フェイルオープン：slot 未設定 or descriptor=NONE なら **CONTINUE**（＝ドライバ既定の click を素通し）。発火は tp_pointer と同じ **msgq→system workqueue**（入力スレッド＝BLE RX 文脈をブロックしない）。
+[tp_pointer.c](../features/trackpad/src/tp_pointer.c) の兄弟。`INPUT_EV_KEY`（`BTN_0`/`BTN_1` 等）を対象に、`device-id` と現在レイヤーから gesture slot を引き、対応する **binding descriptor を実行時 binding 化して発火**（§4.2）、元イベントは STOP で消費。フェイルオープン：slot 未設定 or descriptor=NONE なら **CONTINUE**（＝ドライバ既定の click を素通し）。発火は tp_pointer と同じ **msgq→system workqueue**（入力スレッド＝BLE RX 文脈をブロックしない）。
 
 - 押下/離しの対応：タップ系は press→release を1回（既存 `tp_tap_work_cb` を流用）。長押し(hold)は「押し続け→指離しで release」を扱えるよう、hold は down/up をイベント値に追従させる（BTN の 1/0 を binding の press/release に橋渡し）。
 - listener への挿し位置：`&pointing_listener*` の base processor に `<&tp_pointer …>, <&tp_keys …>` の順で追加。tp_pointer は REL のみ、tp_keys は KEY のみを見るので競合しない。
@@ -204,12 +204,12 @@ static struct zmk_behavior_binding tp_make(const struct tp_binding *d){
 
 ### 4.5 config store / GATT（Write Long 対応を追加）
 
-v1 の [config_state.c](../trackpad/src/config_state.c) / [gatt_service.c](../trackpad/src/gatt_service.c) を v2 レイアウトに拡張（ダブルバッファ・ロックレス公開・NVS 再検証は不変）。GATT UUID `e1f4ac00/ac01` は**据え置き**（version で世代管理）、characteristic も単一のまま。
+v1 の [config_state.c](../features/trackpad/src/config_state.c) / [gatt_service.c](../features/trackpad/src/gatt_service.c) を v2 レイアウトに拡張（ダブルバッファ・ロックレス公開・NVS 再検証は不変）。GATT UUID `e1f4ac00/ac01` は**据え置き**（version で世代管理）、characteristic も単一のまま。
 
 **GATT WRITE を MTU 超に対応させる — 2つの書込みトランスポートを両対応**（wire が数百B＝MTU 超になるため）。実装は当初「btleplug の long-write 自動分割に任せる」想定だったが、デスクトップアプリは実際には **bluest 0.6.x**（[Cargo.toml](https://github.com/tak-2025/Torabo-Studio/blob/main/src-tauri/Cargo.toml)）を使い、`Characteristic::write()` は **単発の ATT Write** に落ちる。**Windows/WinRT はこの単発 write を ATT Write Long に昇格してくれない**ため、MTU 超ペイロードは黙って落ちる（READ は Read Long で動くが WRITE は動かない、という実測バグ）。そこで **OS 非依存のアプリ側チャンク分割** ＋ **FW 側の二経路再組立** で確実に通す：
 
 - **アプリ側**（[trackpad.rs](https://github.com/tak-2025/Torabo-Studio/blob/main/src-tauri/src/transport/trackpad.rs) / 共有ヘルパ `transport::write_chunked`）：`Characteristic::max_write_len()`（Windows では **交渉済み ATT MTU − 3**。取得不能/0 なら 180B にフォールバック）を1チャンク上限とし、ペイロードをその上限で分割して **応答付き write を順送**する。write の応答往復がチャンクを直列化する（順序保証＋フロー制御）ので **遅延挿入は不要**。MTU 内の小さな config は従来どおり単発 write。
-- **FW 側**（[gatt_service.c](../trackpad/src/gatt_service.c) の `tp_write_cfg`）：`TP_WIRE_CAP` の静的バッファ1本で **2トランスポートを両対応** する再組立器：
+- **FW 側**（[gatt_service.c](../features/trackpad/src/gatt_service.c) の `tp_write_cfg`）：`TP_WIRE_CAP` の静的バッファ1本で **2トランスポートを両対応** する再組立器：
   - **(A) ATT Write Long**（本来の long write。Zephyr は PREPARE キュー→Execute で offset 昇順に replay、または単発 Write Request が offset==0 で1回）。PREPARE は bounds のみ、`offset>0` は「連続 offset で連結し、`tp_apply_wire` は毎回試行（完全長のみ受理）」。
   - **(B) プレーン・チャンク書込み**（bluest/Windows。**全チャンクが offset==0** で来る）。offset で継続判定できないので、`offset==0` を次の3分岐で捌く：**①Fast path**＝そのチャンク単体が完全 wire（`tp_apply_wire(buf,len)==0`）なら適用・保存・完了（全小 config／v1 wire を吸収）。**②継続**＝再組立中で、直近チャンクが **フレッシュ（`k_uptime_get()` で 2000ms 以内）**、ステージ済みヘッダが期待全長 `tp_expected_len()` に解釈でき、`staged+len<=expected` なら末尾に連結。`==expected` で `tp_apply_wire` フル検証→成功で保存、失敗で破棄＋ATT エラー。**③新規開始**＝それ以外は破棄し、先頭が妥当ヘッダ（magic 0x7470＋既知 version）なら新規ステージ、さもなくば `BT_ATT_ERR_VALUE_NOT_ALLOWED` で拒否（ステージしない）。
 - **検証は従来どおり `tp_apply_wire` に一元化**（magic/version/length/clamp・アトミック公開）。組立器はフレーミングのみで、完成 blob は必ず `tp_apply_wire` で再検証。offset 不連続・cap 超過・不整合な restart は破棄＆拒否。半端な blob は length 不一致で通らない＝安全。

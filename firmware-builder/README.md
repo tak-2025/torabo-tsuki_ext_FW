@@ -87,7 +87,7 @@ v0 から拡張され、以下が実装済みです（いずれも `default n`�
 - **ロータリーエンコーダ** — 回転（標準/拡張FFC）＋ボタン押下を、central 直結・peripheral split の両方で。
   回転は sensor 経路、ボタンは input 経路に乗るため keymap/transform の改造は不要。レイヤーごとの割当は Studio でライブ編集。
 - **トラックボール／トラックパッド設定** — レイヤー/軸ごとの move・scroll・速度・離散エンコーダ役割・慣性スクロール（coast）などを BLE / USB でライブ設定。
-- **拡張ステータスLED** — 従来固定動作（`torabo-status-led-ext`）／ルール設定式ライブ（`torabo-led-live`＋`torabo-led-ext-periph`）を選択（両者は排他）。
+- **拡張ステータスLED** — ルール設定式（`torabo-led-live`＋相手側に `torabo-led-ext-periph`）。Studio の LED タブでライブ編集。
 - **カスタムマクロ（`&dmac`）／ダイナミックコンボ** — NVS 保存＋ライブ編集。
 - **ライブフィード（`torabo-live-feed`）** — キー押下・レイヤー状態を PC の [Torabo Float](https://github.com/tak-2025/Torabo-Float) オーバーレイへ push（BLE NOTIFY／トンネル対応 FW なら USB でも）。central 専用・未購読時ゼロコスト。
 - **予約レイヤー** — 空レイヤーを N 枚（1〜10、既定 10）追加（ZMK Studio の実行時 add_layer 用の空き枠）。

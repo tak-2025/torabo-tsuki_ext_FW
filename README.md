@@ -78,8 +78,7 @@ Bluetooth での接続名、HW 構成、追加レイヤーの予約など、利�
 | **トラックボール設定 / オートマウスレイヤー** | `ZMK_TRACKBALL_CONFIG` ／ `torabo-trackball` | レイヤー/軸ごとの move・scroll・向き・速度と temp-layer（オートマウスレイヤーの戻り時間・切替先）をライブ設定。**慣性スクロール（coast）** — 指を離したあとスクロールが滑って止まる長さ・開始しきい値も設定可（ワイヤ v3 / caps `ZTC_COAST`）。不正/空設定でも動きが止まらない fail-open 入力プロセッサ |
 | **トラックパッド設定** | `ZMK_TRACKPAD_CONFIG` ／ `torabo-trackpad*` | レイヤー/デバイスごとの move・scroll・off と離散エンコーダ役割（音量/明るさ/ズーム/ブラウザ）・向き・ステップを設定。**慣性スクロール（coast）をデバイスごとに設定可**（ワイヤ v3 / caps `TP_COAST`）。拡張パッド構成に対応 |
 | **ロータリーエンコーダ** | `ZMK_ENCODER_CONFIG` ／ `torabo-encoder-live` | レイヤーごとの CW / CCW / 押し込みをライブ割当。回転は ZMK の sensor 経路、ボタンは input 経路に乗るため **keymap 編集・マトリクス変換・物理レイアウト登録は不要** |
-| **拡張ステータスLED（ルール設定式）** | `ZMK_LED_CONFIG` ／ `torabo-led-live` | 拡張基盤の3色LEDを「Xが起きたら色C・パターンPで表示」のルール表で左右別々に設定。central が全ルールを保持し、自分のLEDを駆動しつつ相手側のLED表示を split で押し込む（peripheral 側は設定不要） |
-| **拡張ステータスLED（固定動作・旧式）** | `TORABO_STATUS_LED_EXT` ／ `torabo-status-led-ext` | BLE プロファイル切替の色フラッシュ＋相方切断中の赤点灯。central 専用・動作固定。`torabo-led-live` の前身で、**同時有効化は不可**（同じ GPIO を奪い合う） |
+| **拡張ステータスLED** | `ZMK_LED_CONFIG` ／ `torabo-led-live` | 拡張基盤の3色LEDを「Xが起きたら色C・パターンPで表示」のルール表で左右別々に設定。central が全ルールを保持し、自分のLEDを駆動しつつ相手側のLED表示を split で押し込む（peripheral 側は設定不要） |
 | **タイミング（タップ反応）** | `ZMK_TIMING_CONFIG` ／ `torabo-timing`（＋ peripheral に `torabo-timing-split`） | キーの「効き」を再フラッシュせず調整。`&mt`（mod_tap）/ `&lt`（layer_tap）の tapping-term・flavor・quick-tap・require-prior-idle と positional 系、および kscan の**デバウンス**（press/release）。アプリ上のタブ名は**「タップ反応」**。設定はノード単位（`&mt` を使う全キーに効く）。デバウンスは相手側に `torabo-timing-split` を載せると左右両方に届く（caps `TIMING_SPLIT_DEBOUNCE`）。**zmk 本体の fork が必須** |
 | **USB トンネル（RPC）** | `ZMK_STUDIO_TORABO_TUNNEL` ／ `torabo-rpc-tunnel` | 上記の独自設定を、BLE GATT に加えて **Studio RPC の土管にも流す**汎用トンネル。ワイヤは GATT と 1 バイトも同じ。これが入っていると **USB 接続でも全タブが読み書きでき**、USB 接続の Torabo Float にライブフィードが届く。載っている機能のぶんだけ自動で口が開く。central 専用・**zmk 本体の fork が必須** |
 | **ライブフィード（キー/レイヤー通知）** | `ZMK_LIVE_FEED` ／ `torabo-live-feed` | central のキー押下・レイヤー状態・スナップショットを 16 バイトの packed イベントで暗号化 GATT NOTIFY（`e1f4af00`）。トンネル対応 FW なら USB でも届く。PC の [Torabo Float](https://github.com/tak-2025/Torabo-Float) オーバーレイが購読して表示。診断用の第2キャラクタリスティック `e1f4af02` あり。central 専用・未購読時はゼロコスト |
@@ -97,19 +96,19 @@ torabo-tsuki_ext_FW/
 ├── Kconfig                  # 各機能サブディレクトリの Kconfig を読み込む
 ├── CMakeLists.txt           # 各機能を add_subdirectory（CONFIG でガード）
 ├── dts/                     # behavior / input_processor の binding と dtsi
-├── macros/                  # カスタムマクロ（zmk_dynamic_keymap）
-├── combos/                  # ダイナミックコンボ（zmk_dynamic_combos）
-├── trackball/               # トラックボール設定 + オートマウスレイヤー
-├── trackpad/                # トラックパッド設定（tp_pointer / tp_keys）
-├── encoder/                 # ロータリーエンコーダ設定
-├── led/                     # 拡張LED ルール設定（zmk_led_config）
-├── status_led_ext/          # 拡張LED 固定動作（旧式・led/ の前身）
-├── timing/                  # タイミング調整（hold-tap + kscan デバウンス、split 伝搬）
-├── live_feed/               # ライブフィード（キー/レイヤーの NOTIFY・診断）
-├── caps/                    # 機能記述子（firmware self-description）
-├── layers/                  # 予約レイヤー注入
+├── features/                # 機能本体（1機能＝1サブディレクトリ・独立ビルド）
+│   ├── macros/              # カスタムマクロ（zmk_dynamic_keymap）
+│   ├── combos/              # ダイナミックコンボ（zmk_dynamic_combos）
+│   ├── trackball/           # トラックボール設定 + オートマウスレイヤー
+│   ├── trackpad/            # トラックパッド設定（tp_pointer / tp_keys）
+│   ├── encoder/             # ロータリーエンコーダ設定
+│   ├── led/                 # 拡張LED ルール設定（zmk_led_config）
+│   ├── timing/              # タイミング調整（hold-tap + kscan デバウンス、split 伝搬）
+│   ├── live_feed/           # ライブフィード（キー/レイヤーの NOTIFY・診断）
+│   ├── caps/                # 機能記述子（firmware self-description）
+│   └── layers/              # 予約レイヤー注入
 ├── snippets/                # 各機能を build に足す snippet 群
-├── test/                    # ローカルのビルド確認スクリプト
+├── test/                    # ホスト wire ゴールデンテストとビルド確認スクリプト
 ├── firmware-builder/        # build.yaml / conf / west.yml を作る GUI ジェネレータ
 └── docs/                    # 各機能の設計・仕様ドキュメント
 ```

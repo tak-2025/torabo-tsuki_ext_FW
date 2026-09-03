@@ -1,0 +1,2 @@
+# Host-test build output (binaries, one per ZMK_KEYMAP_LAYERS_LEN value).
+.build/

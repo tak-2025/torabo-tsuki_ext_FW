@@ -258,7 +258,7 @@ keymap が position を即 behavior 発火（キー押下）して消費する�
 - [ ] split 再ペア後も central で combo が正しく発火（左右遅延・ずれが出ない）
 
 ### 実装状況（2026-06-25）
-**FW・アプリとも実装完了。** FW = `combos/`（`combo_engine.c`＝combo.c 逐語コピー＋4改修 /
+**FW・アプリとも実装完了。** FW = `features/combos/`（`combo_engine.c`＝combo.c 逐語コピー＋4改修 /
 `combo_state.c` / `gatt_service.c` / Kconfig / CMakeLists / snippet `torabo-combos` /
 binding `zmk,dynamic-combos.yaml`）。アプリ = `comboConfig.ts`（wire codec）/ `combo.rs`＋登録 /
 `tauri/combo.ts` / `CombosPanel.tsx` / MainPanels タブ / i18n。

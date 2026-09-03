@@ -81,7 +81,7 @@ ext_FW timing モジュール」。fork 単独でもビルド・動作するこ�
   (weak: dt をそのまま返す)。kscan_gpio_matrix.c の `zmk_debounce_update()` 呼び出し点で
   config 参照をこれ経由にする(スキャン毎に読む → 即時反映)。
 
-### ext_FW 新モジュール `timing/`
+### ext_FW 新モジュール `features/timing/`
 
 combos/trackpad の構成をテンプレートに:
 
@@ -141,7 +141,7 @@ DT 値(5/5ms)で走ること — チャタリング防止の閾値としては�
 - `void zmk_torabo_debounce_split_push(void)`
   — strong 実装は **central.c**(system workqueue へ submit)。モジュール → fork 方向。
 - `void zmk_torabo_debounce_split_apply(uint8_t press, uint8_t release)`
-  — strong 実装は ext_FW `timing/src/split_peripheral.c`。同ファイルが peripheral 側の
+  — strong 実装は ext_FW `features/timing/src/split_peripheral.c`。同ファイルが peripheral 側の
   `zmk_torabo_debounce_effective` も持つ(atomic index + ダブルバッファ、central と同型)。
 
 `ZMK_TIMING_SPLIT_PERIPHERAL` は `depends on !ZMK_TIMING_CONFIG` — 両者が同じシーム

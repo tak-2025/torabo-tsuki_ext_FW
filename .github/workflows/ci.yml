@@ -1,0 +1,169 @@
+name: CI
+
+# Phase 0 safety net (PLAN-ext-fw-refactor.md):
+#   job 1 - the host wire golden tests: do the wire formats still emit the same
+#           bytes? Seconds to run, and the thing that actually guards the
+#           compatibility boundary during the refactor.
+#   job 2 - a west build matrix: does the module still compile and link into a
+#           real ZMK build, across central/peripheral and a spread of snippet
+#           combinations? Minutes to run, and what catches a Kconfig or
+#           devicetree regression the host tests cannot see.
+#
+# The build matrix uses tak-2025/fw-test as the config repo: it is public, it
+# carries the torabo_tsuki_lp shield and the west manifest, and it is the config
+# the field firmware was built from. The module checked out here REPLACES the one
+# the manifest would otherwise fetch, so the matrix always builds this branch.
+
+on:
+  push:
+    branches-ignore:
+      - gh-pages
+    paths-ignore:
+      - '**.md'
+      - 'firmware-builder/**'
+      - 'firmware/**'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  host-tests:
+    name: wire golden tests (host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the wire golden tests
+        # Compiles each feature's config_state.c natively against the stubs in
+        # test/wire/stubs and exercises the codecs. The suite is built once per
+        # ZMK_KEYMAP_LAYERS_LEN value, because that constant is the only thing
+        # that changes the ztc / tp / enc wire LENGTH (PLAN §0.4).
+        # Invoked through bash so a missing exec bit (checkouts made on Windows)
+        # can never be the reason CI is red.
+        run: bash ./test/wire/run-tests.sh
+
+  # ---------------------------------------------------------------------------
+  build-matrix:
+    name: west build (${{ matrix.name }})
+    needs: host-tests
+    runs-on: ubuntu-latest
+    container:
+      image: zmkfirmware/zmk-build-arm:stable
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The two halves of the field firmware, verbatim from fw-test's
+          # build.yaml. If either of these breaks, real keyboards break.
+          - name: central-full
+            shield: torabo_tsuki_lp_right
+            snippet: >-
+              studio-rpc-usb-uart split-central input-trackball input-listener
+              input-trackpad-ext torabo-trackpad-live-ext input-split-listener
+              input-encoder-recv torabo-encoder-live torabo-encoder-btn-recv
+              torabo-trackpad-live-split torabo-led-live torabo-caps
+              torabo-rpc-tunnel torabo-timing torabo-live-feed torabo-trackball
+              torabo-macros torabo-combos torabo-reserved-layers
+            cmake-args: -DDTS_EXTRA_CPPFLAGS=-DTORABO_RESERVED_LAYERS=10
+
+          - name: peripheral
+            shield: torabo_tsuki_lp_left
+            snippet: >-
+              studio-rpc-usb-uart input-encoder input-trackpad-ext-split
+              torabo-encoder-btn-split torabo-led-ext-periph torabo-timing-split
+            cmake-args: ''
+
+          # Proves every feature really is independently optional: a central
+          # with only the self-description and the settings tunnel, and the two
+          # NVS-slot features. A Kconfig `depends on` that quietly stopped being
+          # satisfiable shows up here and nowhere else.
+          - name: central-minimal
+            shield: torabo_tsuki_lp_right
+            snippet: >-
+              studio-rpc-usb-uart split-central torabo-caps torabo-rpc-tunnel
+              torabo-macros torabo-combos
+            cmake-args: ''
+
+    steps:
+      - name: Check out the module under test
+        uses: actions/checkout@v4
+        with:
+          path: module
+
+      - name: Check out the config repo (shield + west manifest)
+        uses: actions/checkout@v4
+        with:
+          repository: tak-2025/fw-test
+          path: hub
+
+      - name: Cache the west workspace
+        uses: actions/cache@v4
+        with:
+          path: |
+            workspace/zmk
+            workspace/zephyr
+            workspace/modules
+            workspace/zmk-component-bmp-boost
+            workspace/zmk-driver-paw3222
+            workspace/zmk-driver-iqs7211e
+            workspace/zmk-feature-status-led
+            workspace/zmk-feature-cdc-acm-bootloader-trigger
+            workspace/zmk-feature-non-lipo-battery-management
+          key: west-${{ hashFiles('hub/config/west.yml') }}
+          restore-keys: west-
+
+      - name: Initialise the west workspace
+        run: |
+          set -eux
+          mkdir -p workspace/config
+          cp -R hub/config/. workspace/config/
+          cd workspace
+          if [ ! -f .west/config ]; then
+            west init -l config
+          fi
+          west update --fetch-opt=--filter=tree:0
+          west zephyr-export
+
+      - name: Point the workspace at THIS checkout of the module
+        # The manifest pulls torabo-tsuki_ext_FW from main. Swap in the branch
+        # under test so the matrix never silently builds published code.
+        run: |
+          set -eux
+          rm -rf workspace/torabo-tsuki_ext_FW
+          cp -a module workspace/torabo-tsuki_ext_FW
+          test -f workspace/torabo-tsuki_ext_FW/zephyr/module.yml
+
+      - name: Build
+        run: |
+          set -eux
+          cd workspace
+          west build -s zmk/app -d build -b bmp_boost -S "${SNIPPET}" -- \
+            -DSHIELD="${SHIELD}" \
+            -DZMK_CONFIG="${PWD}/config" \
+            -DZMK_EXTRA_MODULES="${GITHUB_WORKSPACE}/hub" \
+            ${CMAKE_ARGS}
+          test -f build/zephyr/zmk.uf2
+        env:
+          SNIPPET: ${{ matrix.snippet }}
+          SHIELD: ${{ matrix.shield }}
+          CMAKE_ARGS: ${{ matrix.cmake-args }}
+
+      - name: Report the size the build came out at
+        run: |
+          cd workspace
+          arm-zephyr-eabi-size build/zephyr/zmk.elf || true
+          ls -l build/zephyr/zmk.uf2
+
+      - name: Upload the firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: workspace/build/zephyr/zmk.uf2
+          if-no-files-found: error
