@@ -114,8 +114,8 @@ enum torabo_caps_side { TORABO_CAPS_SIDE_UNKNOWN = 0, TORABO_CAPS_SIDE_LEFT = 1,
 /*
  * TORABO_FEAT_MODULES: what is plugged into each of the four physical
  * connector slots (PLAN phase 9, re-redesigned 2026-09-03 — the second
- * redesign of this phase. The first shipped design (commit 6659672) reported
- * one 1-of-3 side/conn enum per feature; the second (35a8331) split that into
+ * redesign of this phase. The first shipped design reported
+ * one 1-of-3 side/conn enum per feature; the second split that into
  * a per-feature bitmask spread across the ztc and enc caps words. Both were
  * scrapped: "one row that says what's in each of the 4 slots" is simpler than
  * either, and is exactly the 2x2 grid Torabo-Studio's module layout already
