@@ -3,9 +3,10 @@
  *
  * Two things it has to get right:
  *
- * 1. NEVER drive two channels at once. The 3-colour array shares one anode fed
- *    from a GPIO (the extender's P0.24 rail), which cannot source enough
- *    current for two colours simultaneously. So a "mixed" colour is time-
+ * 1. NEVER drive two channels at once. The 3-colour array shares one anode
+ *    whose supply cannot source enough current for two colours at the same
+ *    time. (It is NOT the extender's P0.24 rail — the board lights with
+ *    nothing on that rail; an earlier revision of this comment said otherwise.) So a "mixed" colour is time-
  *    multiplexed one channel at a time, fast enough that persistence of vision
  *    blends it. Peak current stays at the single-channel budget — which also
  *    means a mixed colour costs no more battery than a single one.
