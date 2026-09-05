@@ -41,8 +41,7 @@ west が Malformed manifest で落ちます）。この fork の `app/west.yml` 
 | `torabo-trackpad-live-split` | 機能＋配線 | central | split で届く反対側パッド（device 0）のライブ設定 | 相手側に `input-trackpad-ext-split` |
 | `torabo-trackpad` | 機能（固定） | central | ライブ設定なしの**固定 overlay** トラックパッド（音量/スクロール層をハードコード） | 土台に `input-trackpad-ext` |
 | `torabo-encoder-live` | 機能 | central | ロータリーエンコーダのライブ設定（回転 behavior＋ボタン processor） | ボタン配線スニペットと併用 |
-| `torabo-led-live` | 機能 | central | 拡張LED をルール表で左右別に設定。両LEDを制御し peripheral 分を split で押し込む | `torabo-status-led-ext` と**排他** |
-| `torabo-status-led-ext` | 機能（固定・旧式） | central | 固定動作LED（プロファイル色＋切断中の赤）。`torabo-led-live` の前身 | `torabo-led-live` と**排他** |
+| `torabo-led-live` | 機能 | central | 拡張LED をルール表で左右別に設定。両LEDを制御し peripheral 分を split で押し込む | 相手側に `torabo-led-ext-periph` |
 | `torabo-timing` | 機能 | central | `&mt`/`&lt` の hold-tap パラメータと kscan デバウンスをライブ調整 | zmk fork の `<zmk/torabo_timing.h>` 必須。相手側に `torabo-timing-split` |
 | `torabo-timing-split` | 機能 | peripheral | central が送るデバウンス値を自分の kscan に反映（受け側だけ） | 相手側に `torabo-timing` |
 | `torabo-reserved-layers` | 機能 | central | 空の予約レイヤーを N 枚追加（Studio が実行時に確保）。無いと LAYER「+」が押せない | 枚数は build.yaml の `cmake-args` |
@@ -72,7 +71,7 @@ west が Malformed manifest で落ちます）。この fork の `app/west.yml` 
 
 BLE でライブ編集する機能は、それぞれ暗号化 GATT サービスを1本持ちます（caps=`e1f4a000` / trackpad=`e1f4ac00` / encoder=`e1f4ad00` / led=`e1f4ae00` / live-feed=`e1f4af00` / timing=`e1f4b000`。macros/combos/trackball も専用サービスあり）。
 
-- **`torabo-macros`** — `&dmac N` で呼ぶ NVS 保存マクロ。中身は Studio の「マクロ」タブから BLE 書き込み（再フラッシュ不要）。keymap に `&dmac 0…19` を置く必要あり。
+- **`torabo-macros`** — `&dmac N` で呼ぶ NVS 保存マクロ。中身は Studio の「マクロ」タブから BLE 書き込み（再フラッシュ不要）。`&dmac` はレンジ metadata 付きなので、キーへの割当も Studio 上で完結する（keymap の手編集は不要）。
 - **`torabo-combos`** — キー位置の同時押しで behavior を発火するコンボを NVS 保存＋ライブ編集。位置コンボの唯一の所有者なので、keymap に `zmk,combos` ノードを置かないこと（二重所有になる）。
 - **`torabo-trackball`** — レイヤー/軸ごとの move/scroll/向き/速度と temp-layer（オートマウスレイヤー）をライブ設定。pointing listener を `ztc_pointer` / `ztc_temp_layer` に差し替える。fail-open なので不正設定でも動きが止まらない。
 - **`torabo-trackpad-config`** — トラックパッド設定のストアと GATT だけを有効化（入力経路は差し替えない）。ライブ配線込みで使うなら `torabo-trackpad-live-*` を使う。
@@ -80,7 +79,6 @@ BLE でライブ編集する機能は、それぞれ暗号化 GATT サービス�
 - **`torabo-trackpad`** — ライブ設定を使わない固定 overlay 版。レイヤー2＝音量、レイヤー3＝縦スクロール等をハードコード。
 - **`torabo-encoder-live`** — ロータリーエンコーダのレイヤーごとの CW/CCW/押し込みをライブ割当。回転は sensor 経路・ボタンは input 経路に乗るため keymap 編集は不要。**ボタン配線スニペットと必ず併用**（§4）。
 - **`torabo-led-live`** — 拡張LED を「Xが起きたら色C・パターンP」のルール表で左右別に設定。central が全ルールを保持し、自分のLEDを駆動しつつ peripheral 分を split で押し込む。`CONFIG_ZMK_HID_INDICATORS` も有効化（Caps Lock 表示用）。
-- **`torabo-status-led-ext`** — 旧式の固定動作LED（プロファイル切替の色フラッシュ＋相方切断中の赤点灯）。`torabo-led-live` の前身で、**同時使用不可**（同じ GPIO を奪い合う）。
 - **`torabo-timing`** — キーの「効き」を決める数値をライブ調整。`&mt`（mod_tap）と `&lt`（layer_tap）の tapping-term / flavor / quick-tap / require-prior-idle と positional 系（hold-trigger-key-positions ほか）、および matrix kscan のデバウンス（press/release）。設定は**ノード単位**なので、`&mt` を使う全キーにまとめて効きます。tak-2025/zmk fork の `<zmk/torabo_timing.h>` フック（`__weak`＝既定は従来動作）に強実装を与える形なので、このスニペットを外せば挙動は完全に元通り。デバウンスは相手側に **`torabo-timing-split`** を付ければ左右両方に効きます（付けない場合は central 側のみ）。
 - **`torabo-timing-split`** — `torabo-timing` の相方で、**peripheral 行に付けます**。キースキャンは各半身がローカルに回すため、これが無いと central に書いたデバウンス値は反対側に届きません。受け側だけの薄いスニペットで、保存も設定画面も持ちません（central が接続のたびに送り直すので、正は常に1つ）。リンクが繋がるまでの数秒だけ、この半身は devicetree の値で走ります。
 - **`torabo-reserved-layers`** — 空の予約レイヤーを N 枚（1〜10、既定10）追加。ZMK Studio が実行時に `add_layer` で確保できる空き枠で、**これが無いと Studio の LAYER「+」が押せません**。枚数は `build.yaml` で指定します:

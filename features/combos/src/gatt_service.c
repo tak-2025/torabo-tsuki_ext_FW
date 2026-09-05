@@ -33,7 +33,7 @@ LOG_MODULE_DECLARE(dcombo_config, CONFIG_ZMK_DYNAMIC_COMBOS_LOG_LEVEL);
 static struct bt_uuid_128 cb_svc_uuid = BT_UUID_INIT_128(CB_BT_UUID_SVC);
 static struct bt_uuid_128 cb_combo_uuid = BT_UUID_INIT_128(CB_BT_UUID_COMBO);
 
-/* The READ/WRITE pair is the shape all five simple settings windows share
+/* The READ/WRITE pair is the shape the simple settings windows share
  * (torabo_common/gatt_simple.h). The READ buffer is materialized once and STATIC
  * — GATT reads are serialized on the BT RX thread, so a single shared buffer
  * avoids a >400 B stack allocation in the callback. cb_apply_write_wire does ALL

@@ -78,8 +78,9 @@ mkdir -p "${BUILD_DIR}"
 #
 # The parts of them that WERE extracted into header-only helpers are tested
 # directly by the test files below, without their .c hosts:
-# torabo_common/coast.h (test_coast.c), binding.h (test_binding.c) and
-# torabo_common/wire_asm.h (test_wire_asm.c).
+# torabo_common/coast.h (test_coast.c), binding.h (test_binding.c),
+# torabo_common/wire_asm.h (test_wire_asm.c) and torabo_common/window_read.h
+# (test_window_read.c).
 SOURCES=(
     "${MODULE_DIR}/features/caps/src/caps.c"
     "${MODULE_DIR}/features/trackball/src/config_state.c"
@@ -107,6 +108,7 @@ TESTS=(
     "${HERE}/test_coast.c"
     "${HERE}/test_binding.c"
     "${HERE}/test_wire_asm.c"
+    "${HERE}/test_window_read.c"
 )
 
 INCLUDES=(

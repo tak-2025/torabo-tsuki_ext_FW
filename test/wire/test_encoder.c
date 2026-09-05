@@ -49,6 +49,64 @@ void test_encoder(void) {
              "enc_wire_len_for() = hdr + N*12");
     T_EQ_INT(ENC_WIRE_CAP, enc_wire_len_for(layers), "ENC_WIRE_CAP == full-layer wire length");
 
+    /* ---- enc_expected_len(): the one place a header becomes a byte length ---
+     * enc_apply_wire()'s length check and the GATT chunk assembler
+     * (torabo_common/wire_asm.h) both call it, so a divergence here is a wire
+     * that a client can write but the firmware cannot frame, or vice versa.
+     * Unlike the trackball's, this length IS sized by the declared layer_count. */
+    {
+        uint8_t hdr[ENC_WIRE_HDR];
+        memset(hdr, 0, sizeof(hdr));
+        hdr[0] = ENC_MAGIC_LO;
+        hdr[1] = ENC_MAGIC_HI;
+        hdr[2] = ENC_WIRE_VERSION;
+
+        /* the layer counts this build could ever be compiled at (run-tests.sh
+         * sweeps ZMK_KEYMAP_LAYERS_LEN over 4, 10 and 20) plus the extremes */
+        static const uint8_t counts[] = {1, 3, 4, 10, 20};
+        for (unsigned i = 0; i < sizeof(counts) / sizeof(counts[0]); i++) {
+            const uint8_t lc = counts[i];
+            hdr[3] = lc;
+            if (lc <= ENC_MAX_LAYERS) {
+                char what[80];
+                snprintf(what, sizeof(what), "expected_len(layer_count=%u) = 4 + %u*12 = %u", lc,
+                         lc, (unsigned)(ENC_WIRE_HDR + lc * ENC_WIRE_LAYER));
+                T_EQ_INT(enc_expected_len(hdr), ENC_WIRE_HDR + lc * ENC_WIRE_LAYER, what);
+            } else {
+                T_EQ_INT(enc_expected_len(hdr), 0,
+                         "expected_len refuses a layer_count above the build's max");
+            }
+        }
+
+        hdr[3] = layers;
+        T_EQ_INT(enc_expected_len(hdr), enc_wire_len_for(layers),
+                 "expected_len(ENC_MAX_LAYERS) == enc_wire_len_for()");
+        T_EQ_INT(enc_expected_len(hdr), ENC_WIRE_CAP, "...which is ENC_WIRE_CAP");
+
+        hdr[3] = 0;
+        T_EQ_INT(enc_expected_len(hdr), 0, "expected_len refuses layer_count 0");
+        hdr[3] = (uint8_t)(ENC_MAX_LAYERS + 1);
+        T_EQ_INT(enc_expected_len(hdr), 0, "expected_len refuses layer_count max+1");
+        hdr[3] = layers;
+
+        hdr[2] = 2;
+        T_EQ_INT(enc_expected_len(hdr), 0, "expected_len refuses version 2");
+        hdr[2] = ENC_WIRE_VERSION;
+
+        hdr[0] ^= 0xFF;
+        T_EQ_INT(enc_expected_len(hdr), 0, "expected_len refuses a bad magic");
+        hdr[0] = ENC_MAGIC_LO;
+
+        T_EQ_INT(enc_expected_len(NULL), 0, "expected_len(NULL) = 0");
+
+        /* Why this feature moved onto the chunk assembler too: at 20 layers the
+         * wire is exactly 244 B, the largest payload a single ATT Write can
+         * carry on a 247-byte MTU — no margin left at all. */
+        if (ENC_MAX_LAYERS == 20) {
+            T_EQ_INT(enc_wire_len_for(20), 244, "20 layers => 244 B, exactly the single-write limit");
+        }
+    }
+
     /* ---- golden round-trip ------------------------------------------------ */
     const uint16_t len = build_wire(wire, sizeof(wire), layers);
     T_EQ_INT(enc_apply_wire(wire, len), 0, "apply synthetic wire succeeds");

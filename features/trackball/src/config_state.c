@@ -44,6 +44,35 @@ static uint16_t ztc_wire_len_v2(void) {
 
 uint16_t ztc_wire_len(void) { return (uint16_t)(ztc_wire_len_v2() + ZTC_WIRE_COAST); }
 
+/* Total wire length a blob starting with this header claims, or 0 if the header
+ * is not a plausible start of one (bad magic / unknown version). This is the
+ * SOLE place that turns a header's shape into a byte length: ztc_apply_wire()'s
+ * exact-length check below calls it on the same buffer it is validating, and the
+ * GATT write assembler (gatt_service.c, torabo_common/wire_asm.h) calls it for
+ * chunk framing on a possibly-incomplete header. Both therefore always agree on
+ * where a wire ends.
+ *
+ * Deliberately independent of the DECLARED layer_count in hdr[3]: unlike the
+ * trackpad's, the trackball wire always carries ZTC_MAX_LAYERS layer slots, so
+ * that byte does not move the end of the blob. It is still validated — but by
+ * ztc_apply_wire, which is where a rejection can be logged with the value that
+ * caused it. Keeping it out of here means a wire with a wild layer_count is
+ * assembled in full and THEN rejected, rather than refused at framing time with
+ * a misleading "not a valid header" reason. */
+uint16_t ztc_expected_len(const uint8_t *hdr) {
+    if (!hdr || rd16(&hdr[0]) != ZTC_WIRE_MAGIC) {
+        return 0;
+    }
+    switch (hdr[2]) {
+    case ZTC_WIRE_VERSION_V3:
+        return ztc_wire_len();
+    case ZTC_WIRE_VERSION_V2:
+        return ztc_wire_len_v2();
+    default:
+        return 0; /* unknown version: not stageable */
+    }
+}
+
 /* ---- defaults == current static overlay behavior (fail-open baseline) ----- */
 
 #define AX(r, d, s) {.role = (r), .direction = (d), .speed_div = (s)}
@@ -162,7 +191,10 @@ int ztc_apply_wire(const uint8_t *buf, uint16_t len) {
         LOG_WRN("ztc wire bad version %u", version);
         return -EINVAL;
     }
-    const uint16_t want = has_coast ? ztc_wire_len() : ztc_wire_len_v2();
+    /* Single source of truth for the v2/v3 length — the same function the
+     * GATT chunk assembler frames with, so the two can never disagree about
+     * where a wire ends. Non-zero here: magic and version were just checked. */
+    const uint16_t want = ztc_expected_len(buf);
     if (len != want) {
         LOG_WRN("ztc wire v%u bad len %u (want %u)", version, len, want);
         return -EINVAL;

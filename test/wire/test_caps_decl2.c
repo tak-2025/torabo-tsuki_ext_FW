@@ -11,7 +11,8 @@
  *
  * Same 11-feature build as test_caps.c's caps_golden. Only two things differ
  * from the baseline:
- *   - header _rsv (offset 7): 0x00 -> 0x01 (central = left)
+ *   - header _rsv (offset 7): 0x04 -> 0x05 (central = left, plus the
+ *     always-on WINDOW_READ bit2 that the baseline also carries)
  *   - the MODULES row's caps word (offset 50-51): 0x0000 -> 0x9191
  * Every other byte, trackball/encoder rows included, is identical to the
  * baseline vector -- same point as the primary decl fixture: placement bits
@@ -33,7 +34,8 @@ static const uint8_t caps_golden_decl2[52] = {
     0x01,       /* fw minor */
     0x01,       /* fw patch */
     0x0B,       /* feature_count = 11 */
-    0x01,       /* _rsv: bit0-1 central side = 1 (left) -- PLAN phase 9 */
+    0x05,       /* _rsv: bit0-1 central side = 1 (left) -- PLAN phase 9
+                 * | bit2 WINDOW_READ (2026-09-05) */
     /* rows, in build_features() order */
     0x01, 0x03, 0x01, 0x00, /* trackball  wire v3, ZTC_COAST (placement not carried here) */
     0x02, 0x02, 0x00, 0x00, /* macros     wire v2 (PLAN phase 8: dm name block) */
@@ -62,6 +64,8 @@ void test_caps_decl2(void) {
 
     T_EQ_INT((buf[7] & TORABO_CAPS_HDR_CENTRAL_MASK) >> TORABO_CAPS_HDR_CENTRAL_SHIFT,
              TORABO_CAPS_SIDE_LEFT, "_rsv central side decodes to LEFT");
+    T_CHECK((buf[7] & TORABO_CAPS_HDR_WINDOW_READ) != 0,
+            "_rsv bit2 still declares WINDOW_READ alongside a declared central side");
 
     uint16_t modules_caps = (uint16_t)buf[50] | ((uint16_t)buf[51] << 8);
     T_EQ_INT(modules_caps, 0x9191, "MODULES caps word == 0x9191 (double config)");

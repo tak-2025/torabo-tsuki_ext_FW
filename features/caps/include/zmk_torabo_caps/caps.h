@@ -173,6 +173,24 @@ enum torabo_caps_slot {
 #define TORABO_CAPS_HDR_CENTRAL_SHIFT 0
 #define TORABO_CAPS_HDR_CENTRAL_MASK 0x03
 
+/* Header `_rsv` byte, bit2: this firmware understands the WINDOWED READ control
+ * frame on every settings characteristic (torabo_common/window_read.h,
+ * 2026-09-05). Header-level, not per-feature, because it is a property of the
+ * GATT layer that every settings service shares — the same contract rule (c)
+ * that put the central side in bit0-1.
+ *
+ * WHY AN APP NEEDS IT: Android's BluetoothGatt#readCharacteristic() runs the ATT
+ * Read + Read Blob sequence itself and stops at 512 B, with no public API to go
+ * further, so the macros READ wire (1964 B) and a fully populated trackpad wire
+ * (~1.5 KB) are simply unreadable from Torabo-Key-App / Torabo-Studio-Android
+ * against an older firmware. With this bit set the app may instead WRITE
+ * [0xFF]['W'][offset u16 LE] and READ back [offset u16][total u16][data], at
+ * most 512 B, repeating until it has `total` bytes. Clear (every firmware before
+ * today) means the app must keep doing a plain whole-blob read and live with the
+ * truncation. desc_ver stays 1 and the descriptor stays 52 B: an app that does
+ * not know this bit ignores it, exactly as the contract requires. */
+#define TORABO_CAPS_HDR_WINDOW_READ 0x04
+
 /*
  * wire:
  *   header (8B): magic u16 | desc_ver u8 | fw_major u8 | fw_minor u8 |

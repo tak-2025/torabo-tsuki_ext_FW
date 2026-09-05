@@ -139,6 +139,16 @@ int ztc_encode_wire(uint8_t *buf, uint16_t cap, uint16_t *out_len);
 /* Expected v3 wire length for the current ZTC_MAX_LAYERS (hdr + N*layer + coast). */
 uint16_t ztc_wire_len(void);
 
+/* Total wire length a blob starting with this header claims (v2 or v3), or 0 if
+ * the header is not a plausible start of one (bad magic / unknown version). The
+ * single place that knows this arithmetic: ztc_apply_wire() uses it for its
+ * exact-length check, and the GATT write assembler (torabo_common/wire_asm.h)
+ * uses it for chunk framing, so the two can never disagree about where a wire
+ * ends. Independent of the declared layer_count — the trackball wire always
+ * carries ZTC_MAX_LAYERS slots; apply still validates that byte.
+ * @param hdr at least ZTC_WIRE_HDR readable bytes. */
+uint16_t ztc_expected_len(const uint8_t *hdr);
+
 /* ---- compile-time wire layout ------------------------------------------- */
 #define ZTC_WIRE_HDR 8u    /* magic[2] version layer_count temp_target _rsv timeout[2] */
 #define ZTC_WIRE_LAYER 12u /* x{role dir speed _rsv} y{...} temp_enable _rsv[3] */

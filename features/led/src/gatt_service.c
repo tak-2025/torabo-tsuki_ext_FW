@@ -29,7 +29,7 @@ LOG_MODULE_DECLARE(led_config, CONFIG_ZMK_LED_CONFIG_LOG_LEVEL);
 static struct bt_uuid_128 led_svc_uuid = BT_UUID_INIT_128(LED_BT_UUID_SVC);
 static struct bt_uuid_128 led_cfg_uuid = BT_UUID_INIT_128(LED_BT_UUID_CFG);
 
-/* The READ/WRITE pair is the shape all five simple settings windows share
+/* The READ/WRITE pair is the shape the simple settings windows share
  * (torabo_common/gatt_simple.h). STATIC buffer: GATT cbs are serialised on BT RX. */
 TORABO_GATT_SIMPLE_HANDLERS(led, TORABO_GATT_WIRE_STATIC, LED_WIRE_CAP, led_encode_wire,
                             led_apply_wire, (void)led_save(), "led")

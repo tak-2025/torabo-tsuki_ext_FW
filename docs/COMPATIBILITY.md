@@ -147,6 +147,28 @@ caps が有効な限り常に末尾に追加する。この行の caps ワード
   ボール＋両拡張エンコーダの stress 構成。`0x9191`）。`test_contracts.c` が
   feature id・シフト・マスク・スロット値をリテラルでピン留め。
 
+
+**ヘッダ `_rsv` bit2 = ウィンドウ読取対応（`TORABO_CAPS_HDR_WINDOW_READ` = `0x04`、2026-09-05）**:
+
+`caps.h` に定義、`caps.c` の `torabo_caps_encode()` が `buf[7]` に**常時**立てる
+（Kconfig ゲート無し。窓は共通 GATT 層の性質であり、設定用サービスが1つでも
+入っていればそれら全部が対応するため、ビルドによって一部だけ対応という状態が
+存在しない）。desc_ver は **1 のまま**、記述子長も **52B のまま**、機能行は
+1バイトも動かない — 契約 (c)「新しいヘッダレベル情報は `_rsv` へ」そのもの。
+
+| _rsv | 意味 |
+|---|---|
+| bit0-1 | central 側（`TORABO_CAPS_HDR_CENTRAL_MASK` = `0x03`） |
+| bit2 | ウィンドウ読取対応（`TORABO_CAPS_HDR_WINDOW_READ` = `0x04`） |
+| bit3-7 | 予約（0） |
+
+アプリ側の使い方は §8(c)。旧アプリはこのビットを無視して従来どおり全体 READ を
+投げるだけなので、後方互換は保たれる（ただし Android クライアントは 512B 切り詰めの
+ままになる — それを直すためのビット）。
+
+ゴールデン: `test_caps.c` の `_rsv` は `0x00` → **`0x04`**、`test_caps_decl.c`（central=右）は
+`0x02` → **`0x06`**、`test_caps_decl2.c`（central=左）は `0x01` → **`0x05`**。
+
 ---
 
 ## 3. live_feed の凍結
@@ -185,6 +207,49 @@ int live_feed_diag_notify(const struct live_feed_diag *d) {
 `torabo_common/gatt_simple.h` を使わず手書きの `BT_GATT_SERVICE_DEFINE` を持つのはこの
 理由による。属性挿入禁止。
 
+**接続レイテンシの協調（2026-09-05、`gatt_service.c` の `lf_ccc_cfg_changed()`）**:
+
+BLE 接続の latency パラメータには **独立した書き手が2人**いて、`bt_conn_le_param_update()`
+は後勝ちである:
+
+1. live_feed の CCC コールバック（subscribe で `CONFIG_ZMK_LIVE_FEED_PREF_LATENCY`=10、
+   unsubscribe で `CONFIG_BT_PERIPHERAL_PREF_LATENCY`=30）
+2. ZMK 本体の Studio RPC トランスポート
+   （`zmk/app/src/studio/gatt_rpc_transport.c` の `rpc_ccc_cfg_changed()`。
+   subscribe で `CONFIG_ZMK_STUDIO_TRANSPORT_BLE_PREF_LATENCY`=10、unsubscribe で 30）
+
+Torabo-Key-App は設定同期の間だけ TX バッファ競合を避けるため live_feed の CCC を
+外す。従来はその瞬間に 1 が latency 30 を要求してしまい（15ms × 30 = 最大 450ms の
+接続イベントスキップ）、直後の Studio RPC（`getPhysicalLayouts` / `getKeymap`）が
+4 秒超に伸びてアプリのタイムアウトに当たっていた。**2 が意図して下げたパラメータを
+1 が黙って戻していた**のが原因。
+
+対策: **Studio RPC 特性の CCC が購読されている間、live_feed の CCC 解除では latency を
+一切触らない**。戻す責任は RPC トランスポート側にあり、自分の CCC が外れたときに 30 を
+要求する（正しい引き継ぎ）。
+
+判定方法（`lf_studio_rpc_subscribed()`）:
+
+- `bt_gatt_foreach_attr_type(0x0001, 0xffff, &rpc_chrc_uuid, NULL, 1, ...)` でローカル属性表から
+  Studio RPC 特性の**値属性**を引き、`bt_gatt_is_subscribed(conn, attr, BT_GATT_CCC_INDICATE)`
+  を見る。どちらも素の Zephyr API で、**ZMK 内部にも zmk fork にも触らない**。
+- UUID は `00000001-0196-6107-c967-c5cfb1c2482a`（zmk `app/src/studio/uuid.h` の
+  `ZMK_STUDIO_BT_RPC_CHRC_UUID`）。全 Studio クライアントが既に知っている**プロトコル定数**なので、
+  ヘッダ依存ではなくワイヤ契約として ext_FW 側に書き写している。
+- INDICATE であって NOTIFY ではない（RPC は配送 ack 付き）。
+
+**`zmk_studio_core_get_lock_state()` は使えない**（重要）: 実機 conf
+（`torabo_tsuki_lp_{left,right}.conf`）が **`CONFIG_ZMK_STUDIO_LOCKING=n`** を設定しており、
+その場合 `core.c` は状態を UNLOCKED 固定で返す。つまり「セッション中か」の判定として
+常に真になり、live_feed が省電力 latency を**二度と戻さなくなる**。実ビルドの `.config` で
+確認済み（`# CONFIG_ZMK_STUDIO_LOCKING is not set`）。RPC トランスポート自身の購読フラグ
+（`handling_rx`）は `gatt_rpc_transport.c` の static で、読むには zmk fork の改変が必要。
+
+- `CONFIG_ZMK_STUDIO_TRANSPORT_BLE` が無いビルド（USB シリアル RPC のみ / Studio 無し）では
+  探す特性自体が存在しないので false ＝ **従来と完全に同一挙動**。
+- latency を**上げる**方向にしか効かないので、Studio 側の要求を邪魔することはない。
+- **`BT_GATT_SERVICE_DEFINE` の属性列は 1 要素も変えていない**（上記の地雷）。
+
 ---
 
 ## 4. 各機能の wire フォーマット（magic / version / レイアウト定数）
@@ -196,13 +261,24 @@ NVS キー・compatible 文字列は §5, §6 で別掲。ここでは wire の�
 | 定数 | 値 | file:line |
 |---|---|---|
 | `ZTC_WIRE_MAGIC` | `0x7A74` | `features/trackball/src/config_state.c:30` |
-| `ZTC_WIRE_HDR` | 8B | `features/trackball/include/zmk_trackball_config/config.h:143` |
-| `ZTC_WIRE_LAYER` | 12B/layer | `config.h:144` |
-| `ZTC_WIRE_COAST` | 4B（v3トレーラ） | `config.h:145` |
-| `ZTC_WIRE_CAP` | `HDR + N*LAYER + COAST` | `config.h:148` |
+| `ZTC_WIRE_HDR` | 8B | `features/trackball/include/zmk_trackball_config/config.h:153` |
+| `ZTC_WIRE_LAYER` | 12B/layer | `config.h:154` |
+| `ZTC_WIRE_COAST` | 4B（v3トレーラ） | `config.h:155` |
+| `ZTC_WIRE_CAP` | `HDR + N*LAYER + COAST` | `config.h:158` |
 | `ZTC_MAX_LAYERS` | `= ZMK_KEYMAP_LAYERS_LEN` | `config.h:33` |
 
 WRITE は v2（coast無し）・v3 の両方を受理、READ は常に v3 で返す（`config.h:128-137`）。
+
+長さ計算の一本化（2026-09-05）: `ztc_expected_len()`（宣言 `config.h`、実装
+`features/trackball/src/config_state.c`）が「このヘッダで始まるならバイト列は何B」を
+返す唯一の場所。`ztc_apply_wire()` の厳密長チェックと GATT WRITE の chunk framing
+（`torabo_common/wire_asm.h`）の両方がこれを使う。tp と違い**宣言 layer_count には
+依存しない**（ztc wire は常に `ZTC_MAX_LAYERS` 枠を運ぶ）。layer_count の検査は
+`ztc_apply_wire()` 側に残してあるので、範囲外の値は組み立て完了後に拒否される。
+
+**チャンク書込対応（2026-09-05）**: レイヤー 20 枚で wire が 252B となり、単発 ATT
+Write の上限 244B（ATT_MTU 247−3）を超える。GATT WRITE は `torabo_common/wire_asm.h`
+で ATT Write Long と offset=0 連投の両方を再組立てする（§8(b)）。属性列は不変。
 
 ### trackpad (tp) — v1/v2/v3
 
@@ -252,13 +328,22 @@ WRITE は v2（coast無し）・v3 の両方を受理、READ は常に v3 で返
 
 | 定数 | 値 | file:line |
 |---|---|---|
-| `ENC_WIRE_MAGIC` | `0x6E65` | `features/encoder/include/zmk_encoder_config/config.h:71` |
-| `ENC_WIRE_VERSION` | `1` | `config.h:72` |
-| `ENC_WIRE_HDR` | 4B | `config.h:73` |
-| `ENC_WIRE_CAP` | `HDR + N*LAYER` | `config.h:76` |
+| `ENC_WIRE_MAGIC` | `0x6E65` | `features/encoder/include/zmk_encoder_config/config.h:74` |
+| `ENC_WIRE_VERSION` | `1` | `config.h:75` |
+| `ENC_WIRE_HDR` | 4B | `config.h:76` |
+| `ENC_WIRE_CAP` | `HDR + N*LAYER` | `config.h:79` |
 | `ENC_MAX_LAYERS` | `= ZMK_KEYMAP_LAYERS_LEN` | `config.h:25` |
 
-magic/version チェック: `features/encoder/src/config_state.c:123`。
+magic/version/layer_count チェックは `enc_expected_len()`
+（`features/encoder/src/config_state.c`）に集約（2026-09-05）。これが
+「このヘッダで始まるならバイト列は何B」を返す唯一の場所で、`enc_apply_wire()` の
+長さ検査と GATT WRITE の chunk framing（`torabo_common/wire_asm.h`）の両方が使う。
+ztc と違い**長さは宣言 layer_count で決まる**ので、範囲外の layer_count は
+framing の時点で 0（=拒否）になる。長さ検査は従来どおり `len >= want`（`==` ではない）。
+
+**チャンク書込対応（2026-09-05）**: レイヤー 20 枚で wire は 244B ちょうど＝単発 ATT
+Write の上限そのもので余裕がなく、21 枚で超える。trackball と同時に
+`torabo_common/wire_asm.h` へ載せ替えた（§8(b)）。属性列は不変。
 
 ### macros (dm) — v1/v2（v2 = フェーズ8 名前ブロック追記、2026-09-03）
 
@@ -311,6 +396,13 @@ magic/version チェック: `features/led/src/config_state.c:113`。
 **NVS に保存済みの blob が長さ不一致で捨てられる**（読み込み時に長さチェックで弾かれ
 デフォルトへフォールバック）。フェーズ0の wire ゴールデンテストが
 `LAYERS="10 4 20"`（`test/wire/run-tests.sh:32`）で3つの層数を掃引しているのはこのため。
+
+**もう1つの地雷（2026-09-05 に踏んだ）**: レイヤー数が増えると wire が単発 ATT Write
+の上限 244B（ATT_MTU 247−3）を超え、BLE 書込がクライアント側で Write Long / チャンク
+分割に昇格する。GATT 側がそれを受けられないと**書込だけが全クライアントで失敗する**
+（READ は Read Blob で通る／USB トンネルは ATT を経由しないので通る、という分かり
+にくい壊れ方をする）。20 枚時点の長さ: ztc 252B（超過）/ enc 244B（ちょうど）/
+tp は元から超過。3機能とも `torabo_common/wire_asm.h` で再組立てするようになった（§8(b)）。
 
 ---
 
@@ -425,22 +517,140 @@ diff が空」（PLAN フェーズ6）。
 
 ## 8. GATT 属性列の凍結
 
-`torabo_common/gatt_simple.h`（`features/common/include/torabo_common/gatt_simple.h`）
-が trackball / led / encoder / macros / combos の5機能に共通の「1属性・READ+WRITE」
-GATT サービス形状を提供する（フェーズ5 A-6）。
+設定用 GATT サービスは、書き込みの受け方で2グループに分かれる。**どちらも属性列は
+[0]=service, [1]=characteristic の2要素ちょうど**で、違いは characteristic の
+パーミッションに `BT_GATT_PERM_PREPARE_WRITE` が付くかどうかだけ。
 
-- `TORABO_GATT_SIMPLE_SERVICE_DEFINE`（`gatt_simple.h:139-146`）は必ず
-  **[0]=service, [1]=characteristic** の2属性ちょうどに展開され、プロパティ・
-  パーミッションも固定（`BT_GATT_CHRC_READ|WRITE`, `PERM_READ_ENCRYPT|WRITE_ENCRYPT`）。
-  増減・並べ替えできるパラメータは存在しない（コメント `gatt_simple.h:26-42`）。
-- trackpad / timing は wire がMTUを超えうるため、この共通マクロを使わず**手書きの
-  `BT_GATT_SERVICE_DEFINE`** を維持している（`features/trackpad/src/gatt_service.c:103-111`,
-  `features/timing/src/gatt_service.c:96-102`）。属性は同じく service+characteristic の
-  2つで、`BT_GATT_PERM_PREPARE_WRITE` が追加されるだけ（属性は増えない）。
-- live_feed は §3 の理由で3属性+CCC×2の手書き（`features/live_feed/src/gatt_service.c:118-133`）。
-- caps は read-only1属性（`features/caps/src/caps.c:180-186`）。
+**(a) `gatt_simple.h` を使う3サービス — led / macros / combos**
+
+`torabo_common/gatt_simple.h`（`features/common/include/torabo_common/gatt_simple.h`）
+が共通の「1属性・READ+WRITE」GATT サービス形状を提供する（フェーズ5 A-6）。
+
+- `TORABO_GATT_SIMPLE_SERVICE_DEFINE` は必ず **[0]=service, [1]=characteristic** の
+  2属性ちょうどに展開され、プロパティ・パーミッションも固定
+  （`BT_GATT_CHRC_READ|WRITE`, `PERM_READ_ENCRYPT|WRITE_ENCRYPT`）。増減・並べ替え
+  できるパラメータは存在しない（同ファイル冒頭の COMPATIBILITY コメント）。
+- WRITE は `offset != 0` を `BT_ATT_ERR_INVALID_OFFSET` で拒否する。**これが許される
+  のは wire が1回の ATT Write（ATT_MTU 247 なら 244B）に必ず収まるときだけ**：
+  led と combos は固定長、macros は1スロットずつの WRITE。
+  **`ZMK_KEYMAP_LAYERS_LEN` でサイズが伸びる wire をここに置いてはいけない**（下記 (b)）。
+
+**(b) チャンク再組立てする4サービス — trackpad / timing / trackball / encoder**
+
+wire が1回の ATT Write に収まらないことがあるため、共通マクロを使わず**手書きの
+`BT_GATT_SERVICE_DEFINE`** を持ち、WRITE コールバックは
+`torabo_common/wire_asm.h`（`struct torabo_wire_asm` + `torabo_wire_asm_feed()`）で
+ATT Write Long（offset 上昇）と WinRT 系クライアントの offset=0 連投の**両方**を
+再組立てする。framing の長さ判断は各機能の `*_expected_len()`（apply の長さ検査と
+同一関数）に一本化。
+
+- trackball / encoder は **2026-09-05 に (a) から (b) へ移した**（実機診断で確定した
+  BLE 書込不能バグの修正）。レイヤー 20 枚（keymap 10 + `TORABO_RESERVED_LAYERS=10`）で
+  ztc wire = `8 + 12*20 + 4` = **252B** となり 244B を超えるため、全クライアントで
+  トラックボール設定の BLE WRITE が失敗していた（READ は Read Blob で通り、USB
+  トンネルも通るので症状が分かりにくい）。encoder は `4 + 12*20` = **244B** ちょうどで、
+  21 枚で同じ罠に落ちる。
+- **属性は増えていない**。ELF で確認済み: `attr_ztc_svc` / `attr_enc_svc` は移行前後とも
+  60B（= `bt_gatt_attr` 20B × 3 = service + characteristic 宣言 + 値）、`rodata` と
+  `bt_gatt_service_static_area` も不変。変わったのは値属性の perm バイト
+  `0x0c`（READ_ENCRYPT|WRITE_ENCRYPT）→ `0x4c`（+ PREPARE_WRITE）の1バイトのみで、
+  これは trackpad / timing が元から持っていた値と同一。
+- live_feed は §3 の理由で3属性+CCC×2の手書き（`features/live_feed/src/gatt_service.c`）。
+- caps は read-only1属性（`features/caps/src/caps.c` 末尾）。
 
 **属性列 = ハンドル順 = BLE 上の公開面**。1要素も増減させない。
+
+**(c) ウィンドウ読取（クライアント駆動の分割 READ、2026-09-05）**
+
+定義: `features/common/include/torabo_common/window_read.h`（純ロジック、Zephyr 非依存）
+＋ `window_read_gatt.h`（`bt_gatt_attr_read()` / `BT_GATT_WRITE_FLAG_PREPARE` の糊だけ）。
+
+**なぜ必要か**: Android の `BluetoothGatt#readCharacteristic()` は ATT Read + Read Blob を
+スタック内部で回し、**512B（`GATT_MAX_ATTR_LEN`）で打ち切る**。それ以上を読む公開 API が
+存在しない。FW 側の Read Blob 実装は正しく（`bt_gatt_attr_read()` は任意 offset で正しく
+切る。だから Windows/Chrome の WinRT Read Long とデスクトップ btleplug は昔から全体を
+読めている）、**限界はクライアント側**にある。macros の READ wire は 1624B(v1)/1964B(v2)、
+フル構成の trackpad wire は約 1.5KB なので、Torabo-Key-App / Torabo-Studio-Android から
+これらの特性は事実上読めなかった。
+
+**プロトコル**:
+
+1. クライアントが**同じ特性**へ 4B の制御フレームを WRITE
+   （`TORABO_WINDOW_READ_CTRL_LEN` = 4）:
+
+   | offset | 値 |
+   |---|---|
+   | 0 | `0xFF`（`TORABO_WINDOW_READ_TAG0`） |
+   | 1 | `0x57` = `'W'`（`TORABO_WINDOW_READ_TAG1`） |
+   | 2-3 | 要求 offset u16 LE |
+
+2. **直後の READ** が次を返す（合計 512B 以下 = `TORABO_WINDOW_READ_MAX_RESP`）:
+
+   | offset | 値 |
+   |---|---|
+   | 0-1 | 要求 offset をそのままエコー u16 LE |
+   | 2-3 | wire 全体長 `total` u16 LE |
+   | 4-  | `data` = `min(508, total - offset)` バイト（`TORABO_WINDOW_READ_MAX_DATA` = 508） |
+
+3. 応答を返し切った時点で状態を解除（**1回限り**）。次の READ は再び全体 READ。
+
+**境界**: `offset >= total` なら data 0 バイト＝ヘッダ 4B だけ（`total` は入っているので、
+アプリはこれで終端と長さを同時に知る）。`offset < total` なら `min(508, total - offset)`。
+`offset` が `total` を大きく超えていても（`0xFFFF` でも）エラーにはならず 4B が返る。
+
+**後方互換**: 制御フレーム無しの READ は**従来どおり wire 全体**を返す。既存クライアント
+（Studio デスクトップ / Studio Web / USB トンネル — トンネルは ATT を通らない）は無改修で
+そのまま動く。対応の有無はアプリが caps ヘッダ `_rsv` **bit2**（§2）で判定する。
+
+**対象特性（7つ全部）**: trackball / macros / combos / trackpad / encoder / led / timing。
+`gatt_simple.h` を使う3つ（led / macros / combos）はマクロ内で、チャンク再組立ての4つ
+（trackpad / timing / trackball / encoder）は各 `gatt_service.c` で同じ2つの関数を呼ぶ。
+
+**対象外**:
+- **caps**（`e1f4a001`）は write コールバックを持たない read-only 特性なので、制御フレームを
+  受けるには WRITE プロパティを足すしかなく、それは本節が凍結している属性レベルの変更。
+  52B なので窓は機能的に不要（23B MTU でも Read Blob で読める）。
+- **live_feed**（`e1f4af01` / `af02`）は NOTIFY 主体・16B 固定。§3 の `attrs[]` ハードコード
+  地雷もあるので触らない。
+
+**0xFF が安全である根拠（§4 の magic 表と対応）**: この FW が受理する WRITE wire の
+先頭バイトは全て定数で、`0xFF` になり得ない。
+
+| 機能 | 先頭バイト | 由来 |
+|---|---|---|
+| trackball | `0x74` | magic `0x7A74` LE |
+| trackpad | `0x70` | magic `0x7470` LE |
+| encoder | `0x65` | magic `0x6E65` LE |
+| led | `0x6C` | magic `0x656C` LE |
+| timing | `0x01` | `TMG_WIRE_VERSION`（magic 無し、offset0 が version） |
+| macros | `0x01` / `0x02` | `DM_VERSION_V1` / `_V2`（`dm_apply_write_wire` が先頭で分岐） |
+| combos | `0x01` | `CB_VERSION`（加えて長さが `CB_WRITE_MAX` = 28B ちょうど固定） |
+
+加えて長さでも守られる: 制御フレームは **offset==0・非 prepare・ちょうど 4B** のときだけ
+成立する。led（72B）/ combos（28B）/ macros（v1 は 3+5n B、v2 name は 20B 固定）は
+4B の WRITE を元から受理しない。
+
+**唯一の交差ケースと対策**: チャンク再組立ての4機能は、blob の**続きのチャンク**を
+offset=0 で受ける（WinRT 系クライアントの挙動、§8(b)）。末尾チャンクがたまたま 4B で
+先頭が `0xFF` になる可能性はゼロではない。そこで4機能は
+`torabo_wire_asm_assembling(&asm, k_uptime_get())`（`wire_asm.h`、2026-09-05 追加の
+読み取り専用ヘルパ）が **false のときだけ**制御フレームとして解釈する。転送中は
+従来どおり assembler にそのまま渡る。特に encoder は `ENC_WIRE_HDR` が 4 なので、
+制御フレーム判定を assembler より**前**に置く順序が効いている。
+
+**バッファ**: 応答は「ヘッダ ++ wire[offset..]」なので、専用の 512B バッファを機能ごとに
+持つ代わりに、READ スクラッチを `TORABO_WINDOW_READ_HDR + WIRE_CAP` バイトにして
+wire を 4B 後ろに置き、ヘッダを `scratch[offset..offset+3]`（＝クライアントが前の窓で
+既に受け取り済みの4バイト）に**その場で**上書きする。READ コールバックは元から毎回
+wire を再エンコードするので、上書きは次の READ に持ち越さない。
+
+**属性列・プロパティ・パーミッションは1ビットも変えていない**。ELF 上の
+`attr_*_svc` シンボルサイズも 2514ce4 と同一。
+
+**テスト**: `test/wire/test_window_read.c`（純関数を直接駆動。全体 READ の不変性、
+制御フレーム判定の網羅、1964B/1526B/508B/509B の窓走査による完全再組立て、
+offset 0 / 508 / total-1 / total / total+1 / 0xFFFF の境界、1回限りの解除、
+20B ATT 断片をまたぐ窓の維持、未読での再 arm 上書き）。
 
 ---
 
@@ -583,6 +793,10 @@ CMake/ビルド時の自動整合チェックは追加していない（PLAN の
 6. LOG モジュール名は `<feature>_config` パターンに揃える（§10）。
 7. `test/wire/run-tests.sh` の `SOURCES` / `TESTS` / `INCLUDES` 配列
    （`run-tests.sh:83-125`）に新機能のファイルを追加し、ゴールデンテストを書く。
+8. GATT サービスの形を決める（§8）。wire 長が `ZMK_KEYMAP_LAYERS_LEN` などで**伸びる
+   なら `gatt_simple.h` は使えない**（244B を超えた瞬間に BLE 書込が死ぬ）。
+   `*_expected_len()` を1つ書いて `torabo_common/wire_asm.h` に載せ、
+   `test/wire/test_wire_asm.c` にその codec のバックエンドを足す。
 
 ---
 

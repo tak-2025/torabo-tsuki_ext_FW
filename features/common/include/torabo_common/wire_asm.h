@@ -116,6 +116,24 @@ struct torabo_wire_asm {
 };
 
 /**
+ * @brief Is a plain-chunked transfer currently in flight?
+ *
+ * True exactly when torabo_wire_asm_feed() would treat the next offset-0 chunk
+ * as a CONTINUATION (Case 2 below) rather than as a fresh transfer — i.e. bytes
+ * are staged AND the previous chunk is younger than the timeout.
+ *
+ * Added 2026-09-05 for the windowed READ (torabo_common/window_read.h): the
+ * 4-byte control frame is intercepted BEFORE the assembler sees it, and this
+ * lets the write callback decline to do that while a chunked settings write is
+ * mid-flight — the one situation where a 4-byte payload could legitimately be
+ * blob content rather than a control frame. Read-only; the assembler's own
+ * behaviour is unchanged.
+ */
+static inline bool torabo_wire_asm_assembling(const struct torabo_wire_asm *a, int64_t now) {
+    return a->len > 0 && (now - a->last_ms) <= TORABO_WIRE_ASM_TIMEOUT_MS;
+}
+
+/**
  * @brief Feed one GATT write chunk into the reassembler.
  *
  * @param a          The feature's window.

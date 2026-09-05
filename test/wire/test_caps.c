@@ -23,6 +23,14 @@
  * declared (non-zero) case lives in the separate test_caps_decl.c /
  * test_caps_decl2.c binaries (see run-tests.sh), never in this one.
  *
+ * WINDOWED READ (2026-09-05) sets header `_rsv` bit2 unconditionally
+ * (TORABO_CAPS_HDR_WINDOW_READ = 0x04), so this vector's _rsv is 0x04 rather
+ * than the 0x00 it carried before: every settings characteristic in every build
+ * answers the [0xFF]['W'][offset] control frame, so there is nothing to gate it
+ * on. desc_ver stays 1, the descriptor stays 52 B, and no feature ROW moves --
+ * an app that does not know bit2 ignores it, which is exactly rule (c) of the
+ * app-decoder contract.
+ *
  * PLAN phase 8 (dm v2 macro names) bumped the macros row's wire_ver 1->2
  * (offset 13, the row's 2nd byte). This is the ONLY byte the ORIGINAL 48B of
  * this vector changes for phase 8: the row's caps word (offset 14-15) stays
@@ -48,7 +56,7 @@ static const uint8_t caps_golden[52] = {
     0x01,       /* fw minor */
     0x01,       /* fw patch */
     0x0B,       /* feature_count = 11 */
-    0x00,       /* rsv */
+    0x04,       /* rsv: bit0-1 central side = 0 (unknown) | bit2 WINDOW_READ */
     /* rows, in build_features() order */
     0x01, 0x03, 0x01, 0x00, /* trackball  wire v3, ZTC_COAST */
     0x02, 0x02, 0x00, 0x00, /* macros     wire v2 (PLAN phase 8: dm name block) */
@@ -96,6 +104,15 @@ void test_caps(void) {
     T_EQ_MEM(buf, pre_phase9_rows, 6, "header magic/desc_ver/fw-version untouched by MODULES row");
     T_EQ_MEM(&buf[8], &pre_phase9_rows[6], sizeof(pre_phase9_rows) - 6,
               "all 10 pre-phase-9 feature rows are byte-identical to before the MODULES row");
+
+    /* WINDOWED READ (2026-09-05): bit2 of `_rsv`, always set, never gated on a
+     * Kconfig. Pinned as bit math as well as inside the byte vector so a future
+     * edit that moves it fails with a readable name. */
+    T_CHECK((buf[7] & TORABO_CAPS_HDR_WINDOW_READ) != 0, "_rsv bit2 declares WINDOW_READ support");
+    T_EQ_INT(TORABO_CAPS_HDR_WINDOW_READ, 0x04, "WINDOW_READ is bit2 (bit0-1 are the central side)");
+    T_EQ_INT(TORABO_CAPS_HDR_WINDOW_READ & TORABO_CAPS_HDR_CENTRAL_MASK, 0,
+             "WINDOW_READ does not overlap the central-side field");
+    T_EQ_INT(buf[2], TORABO_CAPS_DESC_VERSION, "desc_ver still 1 (a _rsv bit is not a layout change)");
 
     /* The descriptor must still fit the compile-time cap it declares. PLAN
      * phase 6 (B-4) raised the cap 10->16; phase 9 raises it again 16->32 for

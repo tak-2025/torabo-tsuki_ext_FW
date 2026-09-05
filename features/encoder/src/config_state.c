@@ -100,6 +100,25 @@ uint16_t enc_wire_len_for(uint8_t layer_count) {
     return (uint16_t)(ENC_WIRE_HDR + (uint32_t)layer_count * ENC_WIRE_LAYER);
 }
 
+/* Total wire length a blob starting with this header claims, or 0 if the header
+ * is not a plausible start of one (bad magic / unknown version / a layer_count
+ * this build cannot hold). The SOLE place that turns a header into a byte
+ * length: enc_apply_wire() below calls it on the buffer it is validating, and
+ * the GATT write assembler (gatt_service.c, torabo_common/wire_asm.h) calls it
+ * for chunk framing on a possibly-incomplete header, so the two can never
+ * disagree about where a wire ends. Unlike the trackball's, the encoder wire IS
+ * sized by its declared layer_count, so that byte has to be checked here. */
+uint16_t enc_expected_len(const uint8_t *hdr) {
+    if (!hdr || rd16(&hdr[0]) != ENC_WIRE_MAGIC || hdr[2] != ENC_WIRE_VERSION) {
+        return 0;
+    }
+    const uint8_t layer_count = hdr[3];
+    if (layer_count == 0 || layer_count > ENC_MAX_LAYERS) {
+        return 0;
+    }
+    return enc_wire_len_for(layer_count);
+}
+
 /* A descriptor we don't understand is dropped to NONE rather than fired blindly. */
 static void decode_bind(const uint8_t *p, struct enc_binding *b) {
     b->behavior = p[0];
@@ -120,16 +139,19 @@ int enc_apply_wire(const uint8_t *buf, uint16_t len) {
     if (!buf || len < ENC_WIRE_HDR) {
         return -EINVAL;
     }
-    if (rd16(&buf[0]) != ENC_WIRE_MAGIC || buf[2] != ENC_WIRE_VERSION) {
+    /* Single source of truth: 0 means bad magic, unknown version, or a
+     * layer_count of 0 / above this build's maximum — exactly the three
+     * rejections that used to be spelled out here. */
+    const uint16_t want = enc_expected_len(buf);
+    if (want == 0) {
+        return -EINVAL;
+    }
+    /* Deliberately >=, not ==, as it has always been: a blob carrying trailing
+     * bytes past its declared layers is truncated, not refused. */
+    if (len < want) {
         return -EINVAL;
     }
     const uint8_t layer_count = buf[3];
-    if (layer_count == 0 || layer_count > ENC_MAX_LAYERS) {
-        return -EINVAL;
-    }
-    if (len < enc_wire_len_for(layer_count)) {
-        return -EINVAL;
-    }
 
     ensure_init();
     memset(&apply_shadow, 0, sizeof(apply_shadow));

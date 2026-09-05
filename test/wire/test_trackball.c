@@ -64,6 +64,60 @@ void test_trackball(void) {
              "ztc_wire_len() = hdr + N*layer + coast");
     T_EQ_INT(ZTC_WIRE_CAP, ztc_wire_len(), "ZTC_WIRE_CAP == v3 length");
 
+    /* ---- ztc_expected_len(): the one place a header becomes a byte length ---
+     * ztc_apply_wire()'s exact-length check and the GATT chunk assembler
+     * (torabo_common/wire_asm.h) both call it, so a divergence here is a wire
+     * that a client can write but the firmware cannot frame, or vice versa. */
+    {
+        uint8_t hdr[ZTC_WIRE_HDR];
+        memset(hdr, 0, sizeof(hdr));
+        hdr[0] = ZTC_MAGIC_LO;
+        hdr[1] = ZTC_MAGIC_HI;
+
+        hdr[2] = 3;
+        T_EQ_INT(ztc_expected_len(hdr), ZTC_WIRE_HDR + ZTC_MAX_LAYERS * ZTC_WIRE_LAYER +
+                                            ZTC_WIRE_COAST,
+                 "expected_len(v3) = hdr + N*layer + coast, for THIS build's layer count");
+        T_EQ_INT(ztc_expected_len(hdr), ztc_wire_len(), "expected_len(v3) == ztc_wire_len()");
+
+        hdr[2] = 2;
+        T_EQ_INT(ztc_expected_len(hdr), ZTC_WIRE_HDR + ZTC_MAX_LAYERS * ZTC_WIRE_LAYER,
+                 "expected_len(v2) = hdr + N*layer, no coast trailer");
+
+        hdr[2] = 1;
+        T_EQ_INT(ztc_expected_len(hdr), 0, "expected_len refuses version 1");
+        hdr[2] = 4;
+        T_EQ_INT(ztc_expected_len(hdr), 0, "expected_len refuses version 4");
+
+        hdr[2] = 3;
+        hdr[0] ^= 0xFF;
+        T_EQ_INT(ztc_expected_len(hdr), 0, "expected_len refuses a bad magic");
+        hdr[0] = ZTC_MAGIC_LO;
+
+        T_EQ_INT(ztc_expected_len(NULL), 0, "expected_len(NULL) = 0");
+
+        /* The declared layer_count does NOT move the end of a trackball wire —
+         * every wire carries ZTC_MAX_LAYERS slots. That is deliberate: it keeps
+         * a wild count out of the framing decision so the blob is assembled in
+         * full and then rejected by apply, with a log line naming the value. */
+        for (unsigned lc = 0; lc <= 255u; lc += 51u) {
+            hdr[3] = (uint8_t)lc;
+            if (ztc_expected_len(hdr) != ztc_wire_len()) {
+                T_CHECK(0, "expected_len ignores the declared layer_count");
+                break;
+            }
+        }
+        T_CHECK(1, "expected_len ignores the declared layer_count (0..255)");
+        hdr[3] = (uint8_t)ZTC_MAX_LAYERS;
+
+        /* Why this feature had to move onto the chunk assembler: on a 247-byte
+         * ATT MTU a single Write carries at most 244 B. This is a statement
+         * about the build, not an assertion that 20 layers is the only shape. */
+        if (ZTC_MAX_LAYERS == 20) {
+            T_EQ_INT(ztc_wire_len(), 252, "20 layers => 252 B, past the 244 B single-write limit");
+        }
+    }
+
     /* ---- READ always emits v3, with the frozen header ---------------------- */
     memset(out, 0xAA, sizeof(out));
     T_EQ_INT(ztc_encode_wire(out, sizeof(out), &out_len), 0, "encode defaults succeeds");

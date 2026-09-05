@@ -67,3 +67,4 @@ void test_contracts(void);
 void test_coast(void);
 void test_binding(void);
 void test_wire_asm(void);
+void test_window_read(void);

@@ -173,10 +173,18 @@ int torabo_caps_encode(uint8_t *buf, uint16_t cap, uint16_t *out_len) {
      * numbering), independent of any feature. CONFIG_TORABO_CENTRAL_SIDE is an
      * int Kconfig (0/1/2) declared unconditionally alongside TORABO_FW_VERSION_*
      * above (features/caps/Kconfig) — always defined whenever CONFIG_TORABO_CAPS
-     * is on, just like those. Default 0 (unset conf) => UNKNOWN, so this byte
-     * stays 0x00 exactly as before this field existed. */
-    buf[7] = ((uint8_t)CONFIG_TORABO_CENTRAL_SIDE << TORABO_CAPS_HDR_CENTRAL_SHIFT) &
-             TORABO_CAPS_HDR_CENTRAL_MASK;
+     * is on, just like those. Default 0 (unset conf) => UNKNOWN, so this FIELD
+     * contributes 0 exactly as before it existed (the byte as a whole is no
+     * longer 0x00 on a default build — bit2 below is always set). */
+    /* bit2 (2026-09-05): every settings characteristic in this build answers the
+     * windowed-read control frame (torabo_common/window_read.h). Unconditional,
+     * not Kconfig-gated: it is a property of the shared GATT layer, which is
+     * compiled into every one of those services, so there is no build in which
+     * it is on for some and off for others. A build with no settings service at
+     * all still reports it truthfully — there is nothing to window. */
+    buf[7] = (((uint8_t)CONFIG_TORABO_CENTRAL_SIDE << TORABO_CAPS_HDR_CENTRAL_SHIFT) &
+              TORABO_CAPS_HDR_CENTRAL_MASK) |
+             TORABO_CAPS_HDR_WINDOW_READ;
 
     uint32_t o = TORABO_CAPS_HDR;
     for (uint8_t i = 0; i < n; i++) {

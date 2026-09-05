@@ -66,8 +66,11 @@ struct enc_snapshot {
  * then layer_count * { cw(4) ccw(4) btn(4) }
  * binding: behavior u8 | mods u8 | param u16
  *
- * 4 + 10 layers * 12 = 124 B — comfortably inside one 247 B ATT MTU, so the
- * GATT characteristic can reject offset != 0 and skip Write Long entirely. */
+ * 4 + 10 layers * 12 = 124 B at the field layer count, but the wire GROWS with
+ * ZMK_KEYMAP_LAYERS_LEN: at 20 layers it is exactly 244 B, which is the largest
+ * payload a single ATT write can carry on a 247-byte MTU, and at 21 it no longer
+ * fits. The GATT characteristic therefore reassembles chunked writes
+ * (torabo_common/wire_asm.h) instead of rejecting offset != 0. */
 #define ENC_WIRE_MAGIC 0x6E65 /* "en" little-endian */
 #define ENC_WIRE_VERSION 1
 #define ENC_WIRE_HDR 4
@@ -84,6 +87,15 @@ const struct enc_snapshot *enc_live(void);
 int enc_apply_wire(const uint8_t *buf, uint16_t len);              /* wire -> validate -> publish */
 int enc_encode_wire(uint8_t *buf, uint16_t cap, uint16_t *out_len); /* live -> wire (GATT READ) */
 uint16_t enc_wire_len_for(uint8_t layer_count);
+
+/* Total wire length a blob starting with this header claims, or 0 if the header
+ * is not a plausible start of one (bad magic / unknown version / a layer_count
+ * of 0 or above this build's maximum). The single place that knows this
+ * arithmetic: enc_apply_wire() uses it for its length check, and the GATT write
+ * assembler (torabo_common/wire_asm.h) uses it for chunk framing, so the two can
+ * never disagree about where a wire ends.
+ * @param hdr at least ENC_WIRE_HDR readable bytes. */
+uint16_t enc_expected_len(const uint8_t *hdr);
 int enc_save(void); /* persist the live snapshot to NVS */
 
 /* ---- fail-open accessors (header-only, no locking) ------------------------ */

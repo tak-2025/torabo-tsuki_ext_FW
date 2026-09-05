@@ -16,7 +16,8 @@
  * SLOT_LEFT_STD=9, SLOT_LEFT_EXT=2, SLOT_RIGHT_STD=1, SLOT_RIGHT_EXT=2)
  * instead of the all-zero baseline. Only two things differ from
  * test_caps.c's caps_golden:
- *   - header _rsv (offset 7): 0x00 -> 0x02 (central = right)
+ *   - header _rsv (offset 7): 0x04 -> 0x06 (central = right, plus the
+ *     always-on WINDOW_READ bit2 that the baseline also carries)
  *   - the MODULES row's caps word (offset 50-51): 0x0000 -> 0x2129
  * Every other byte -- including the trackball and encoder rows -- is
  * identical to the baseline vector, which is the point: placement no longer
@@ -43,7 +44,8 @@ static const uint8_t caps_golden_decl[52] = {
     0x01,       /* fw minor */
     0x01,       /* fw patch */
     0x0B,       /* feature_count = 11 */
-    0x02,       /* _rsv: bit0-1 central side = 2 (right) -- PLAN phase 9 */
+    0x06,       /* _rsv: bit0-1 central side = 2 (right) -- PLAN phase 9
+                 * | bit2 WINDOW_READ (2026-09-05) */
     /* rows, in build_features() order */
     0x01, 0x03, 0x01, 0x00, /* trackball  wire v3, ZTC_COAST (placement not carried here) */
     0x02, 0x02, 0x00, 0x00, /* macros     wire v2 (PLAN phase 8: dm name block) */
@@ -74,6 +76,8 @@ void test_caps_decl(void) {
      * rather than only in the opaque byte diff above. */
     T_EQ_INT((buf[7] & TORABO_CAPS_HDR_CENTRAL_MASK) >> TORABO_CAPS_HDR_CENTRAL_SHIFT,
              TORABO_CAPS_SIDE_RIGHT, "_rsv central side decodes to RIGHT");
+    T_CHECK((buf[7] & TORABO_CAPS_HDR_WINDOW_READ) != 0,
+            "_rsv bit2 still declares WINDOW_READ alongside a declared central side");
 
     /* MODULES row starts at offset 48 (8 header + 10*4 prior rows); its caps
      * word is offset 50-51. 0x2129 little-endian = lo 0x29, hi 0x21. */

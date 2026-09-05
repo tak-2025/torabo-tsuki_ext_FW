@@ -63,6 +63,7 @@ int main(void) {
     test_coast();
     test_binding();
     test_wire_asm();
+    test_window_read();
 
     printf("\n---------------------------------------------\n");
     printf("passed: %d   failed: %d\n", torabo_test_passed, torabo_test_failed);

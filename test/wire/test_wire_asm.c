@@ -42,12 +42,24 @@
  *     catches a reordering that happens to end in the same state,
  *   - the last blob the backend accepted.
  *
- * Two backends are used. `tp` is the REAL trackpad codec (tp_expected_len /
- * tp_apply_wire / tp_save), so the framing is exercised against genuine header
- * rules and genuine lengths. `syn` is a synthetic codec whose expected length is
- * simply a header byte, which makes it possible to construct headers the real
- * codec would never produce — expected == 0, an expected that changes mid
- * transfer, lengths right at the cap.
+ * Four backends are used. `tp` is the REAL trackpad codec (tp_expected_len /
+ * tp_apply_wire), `ztc` the REAL trackball codec and `enc` the REAL encoder
+ * codec, so the framing is exercised against genuine header rules and genuine
+ * lengths. `syn` is a synthetic codec whose expected length is simply a header
+ * byte, which makes it possible to construct headers the real codec would never
+ * produce — expected == 0, an expected that changes mid transfer, lengths right
+ * at the cap.
+ *
+ * ztc and enc joined on 2026-09-05, when their GATT services moved off
+ * torabo_common/gatt_simple.h (which refused offset != 0) onto this assembler:
+ * at 20 layers the trackball wire is 252 B and the encoder wire is 244 B, so
+ * both are at or past the 244-byte ATT single-write limit and every BLE client
+ * has to split the write. They exercise two framing shapes the trackpad does
+ * not: ztc's expected length does NOT depend on the declared layer_count (so a
+ * wild count assembles in full and is rejected only at the end), and enc's DOES
+ * (so a wild count is refused at framing time). Their header lengths differ from
+ * the trackpad's too (8 and 4 vs 6) — see the REF_WIRE_HDR note below for why
+ * the harness still configures both implementations with TP_WIRE_HDR.
  *
  * Coverage: (A) offset-carrying Write Long incl. the Prepare pass, (B) plain
  * offset-0 chunk runs, (C) mixtures of the two, (D) malformed sequences
@@ -63,6 +75,8 @@
 #include <string.h>
 
 #include <zmk_trackpad_config/config.h>
+#include <zmk_trackball_config/config.h>
+#include <zmk_encoder_config/config.h>
 
 #include <torabo_common/wire_asm.h>
 
@@ -100,7 +114,7 @@ static void calllog_add(int kind, uint16_t len, int ret) {
 
 /* -- backend selection ---------------------------------------------------- */
 
-enum backend { BACKEND_TP = 0, BACKEND_SYN = 1 };
+enum backend { BACKEND_TP = 0, BACKEND_SYN = 1, BACKEND_ZTC = 2, BACKEND_ENC = 3 };
 static enum backend g_backend;
 
 /* Synthetic codec: [0]=0xAB magic, [1]=version (1 or 2), [2..3]=total length LE.
@@ -136,11 +150,34 @@ static int syn_apply(const uint8_t *buf, uint16_t len) {
 /* -- the shims both implementations call ---------------------------------- */
 
 static uint16_t backend_expected_len(const uint8_t *hdr) {
-    return (g_backend == BACKEND_TP) ? tp_expected_len(hdr) : syn_expected_len(hdr);
+    switch (g_backend) {
+    case BACKEND_TP:
+        return tp_expected_len(hdr);
+    case BACKEND_ZTC:
+        return ztc_expected_len(hdr);
+    case BACKEND_ENC:
+        return enc_expected_len(hdr);
+    default:
+        return syn_expected_len(hdr);
+    }
 }
 
 static int backend_apply(const uint8_t *buf, uint16_t len) {
-    int ret = (g_backend == BACKEND_TP) ? tp_apply_wire(buf, len) : syn_apply(buf, len);
+    int ret;
+    switch (g_backend) {
+    case BACKEND_TP:
+        ret = tp_apply_wire(buf, len);
+        break;
+    case BACKEND_ZTC:
+        ret = ztc_apply_wire(buf, len);
+        break;
+    case BACKEND_ENC:
+        ret = enc_apply_wire(buf, len);
+        break;
+    default:
+        ret = syn_apply(buf, len);
+        break;
+    }
     calllog_add(0, len, ret);
     if (ret == 0 && buf && len <= sizeof(g_last_applied)) {
         memcpy(g_last_applied, buf, len);
@@ -261,10 +298,14 @@ static int ref_write_cfg(const void *buf, uint16_t len, uint16_t offset, uint8_t
 }
 
 /* NOTE on REF_WIRE_HDR: the reference hard-codes the trackpad's header length,
- * exactly as the original did. The synthetic backend's header is 4 bytes, so the
- * new assembler is configured with hdr_len = TP_WIRE_HDR for BOTH backends —
- * otherwise the two would legitimately differ on a 4- or 5-byte first chunk, and
- * the comparison would be measuring the harness rather than the code. */
+ * exactly as the original did. The other backends' headers are 4 bytes (syn,
+ * enc) and 8 bytes (ztc), so the new assembler is configured with
+ * hdr_len = TP_WIRE_HDR for ALL of them — otherwise the two implementations
+ * would legitimately differ on a short first chunk, and the comparison would be
+ * measuring the harness rather than the code. hdr_len only gates "is this first
+ * chunk long enough to ask expected_len about"; the production services each
+ * pass their own (ZTC_WIRE_HDR / ENC_WIRE_HDR), and expected_len is NULL-safe
+ * and reads at most those many bytes either way. */
 
 /* ======================================================================== */
 /* the implementation under test                                             */
@@ -388,6 +429,14 @@ static uint8_t tp_wire[TP_WIRE_CAP];
 static uint16_t tp_wire_len;
 static uint8_t syn_wire[TP_WIRE_CAP];
 static uint16_t syn_wire_len;
+/* Sized on TP_WIRE_CAP like syn_wire, not on their own (smaller) caps: the
+ * malformed sequence deliberately feeds slices near TP_WIRE_CAP, and the staging
+ * buffers on both sides are TP_WIRE_CAP too. Only the first *_wire_len bytes of
+ * each carry the real wire. */
+static uint8_t ztc_wire[TP_WIRE_CAP];
+static uint16_t ztc_wire_bytes;
+static uint8_t enc_wire[TP_WIRE_CAP];
+static uint16_t enc_wire_bytes;
 
 static void build_tp_wire(void) {
     tp_wire_len = tp_wire_len_for(TP_DEFAULT_DEVICE_COUNT, (uint8_t)TP_MAX_LAYERS);
@@ -424,8 +473,85 @@ static void build_syn_wire(uint16_t total, uint8_t version) {
     }
 }
 
-static const uint8_t *cur_wire(void) { return g_backend == BACKEND_TP ? tp_wire : syn_wire; }
-static uint16_t cur_wire_len(void) { return g_backend == BACKEND_TP ? tp_wire_len : syn_wire_len; }
+/* A valid, fully populated v3 trackball wire: hdr(8) + ZTC_MAX_LAYERS*12 +
+ * coast(4). Every field in range, so ztc_apply_wire accepts the assembled blob
+ * and the ACCEPT paths (not just the reject paths) are exercised. */
+static void build_ztc_wire(void) {
+    ztc_wire_bytes = ztc_wire_len();
+    memset(ztc_wire, 0, sizeof(ztc_wire));
+    ztc_wire[0] = 0x74; /* "zt" magic 0x7A74, LE */
+    ztc_wire[1] = 0x7A;
+    ztc_wire[2] = 3; /* version */
+    ztc_wire[3] = (uint8_t)ZTC_MAX_LAYERS;
+    ztc_wire[4] = (ZTC_MAX_LAYERS > 1) ? 1 : 0; /* temp_target */
+    ztc_wire[6] = 0xE8;                         /* temp_timeout_ms = 1000 LE */
+    ztc_wire[7] = 0x03;
+    for (uint8_t i = 0; i < ZTC_MAX_LAYERS; i++) {
+        uint8_t *lp = &ztc_wire[ZTC_WIRE_HDR + (uint32_t)i * ZTC_WIRE_LAYER];
+        lp[0] = (uint8_t)(i % 3);              /* x.role */
+        lp[1] = (uint8_t)(i & 1);              /* x.direction */
+        lp[2] = (uint8_t)(1 + (i % 32));       /* x.speed_div, in range */
+        lp[4] = (uint8_t)((i + 1) % 3);        /* y.role */
+        lp[5] = (uint8_t)((i + 1) & 1);        /* y.direction */
+        lp[6] = (uint8_t)(1 + ((i + 5) % 32)); /* y.speed_div */
+        lp[8] = (uint8_t)(i < 2 ? 1 : 0);      /* temp_enable */
+    }
+    uint8_t *cp = &ztc_wire[ztc_wire_bytes - ZTC_WIRE_COAST];
+    cp[0] = 1;  /* coast enable */
+    cp[1] = 12; /* friction, in 1..32 */
+    cp[2] = 90; /* threshold, in 1..255 */
+}
+
+/* A valid v1 encoder wire: hdr(4) + ENC_MAX_LAYERS * {cw ccw btn}. */
+static void build_enc_wire(void) {
+    const uint8_t layers = (uint8_t)ENC_MAX_LAYERS;
+    enc_wire_bytes = enc_wire_len_for(layers);
+    memset(enc_wire, 0, sizeof(enc_wire));
+    enc_wire[0] = 0x65; /* "en" magic 0x6E65, LE */
+    enc_wire[1] = 0x6E;
+    enc_wire[2] = ENC_WIRE_VERSION;
+    enc_wire[3] = layers;
+    for (uint8_t i = 0; i < layers; i++) {
+        uint8_t *lp = &enc_wire[ENC_WIRE_HDR + (uint32_t)i * ENC_WIRE_LAYER];
+        for (uint8_t w = 0; w < 3; w++) {
+            uint8_t *bp = &lp[(uint32_t)w * ENC_WIRE_BIND];
+            bp[0] = (uint8_t)(1 + ((i + w) % 5)); /* behavior, in 1..5 */
+            bp[1] = (uint8_t)(i & 0x0F);          /* mods */
+            bp[2] = (uint8_t)(0x10 + i);          /* param LE */
+            bp[3] = (uint8_t)(w + 1);
+        }
+    }
+}
+
+static const uint8_t *cur_wire(void) {
+    switch (g_backend) {
+    case BACKEND_TP:
+        return tp_wire;
+    case BACKEND_ZTC:
+        return ztc_wire;
+    case BACKEND_ENC:
+        return enc_wire;
+    default:
+        return syn_wire;
+    }
+}
+
+static uint16_t cur_wire_len(void) {
+    switch (g_backend) {
+    case BACKEND_TP:
+        return tp_wire_len;
+    case BACKEND_ZTC:
+        return ztc_wire_bytes;
+    case BACKEND_ENC:
+        return enc_wire_bytes;
+    default:
+        return syn_wire_len;
+    }
+}
+
+/* Where the version byte sits in each backend's header (syn puts magic in [0]
+ * and version in [1]; the three real wires are magic u16 then version). */
+static uint16_t cur_version_off(void) { return g_backend == BACKEND_SYN ? 1u : 2u; }
 
 /* ======================================================================== */
 /* the sequences                                                             */
@@ -534,14 +660,25 @@ static void seq_malformed(void) {
     struct evt e11 = {w, (uint16_t)(total - 8), 0, false, 3020};
     step(&e11);
 
-    /* a complete blob that assembles but is then REJECTED by apply(): every byte
-     * after the header is corrupted so the length still matches but the content
-     * does not validate. Only the tp backend can express this (the synthetic one
-     * validates length only), so it is skipped for syn. */
-    if (g_backend == BACKEND_TP) {
+    /* a blob that frames cleanly but is then REJECTED by apply(). Two backends
+     * can express it, each for a different reason, and neither is reachable with
+     * syn or enc (whose apply and expected_len agree on exactly the same
+     * checks, so anything that frames also applies):
+     *   tp  — clearing the GESTURES flag changes the length the header declares,
+     *         so the staged bytes stop matching it,
+     *   ztc — a layer_count past the build's maximum leaves ztc_expected_len
+     *         (which does not look at that byte) framing the full 252 B, and
+     *         ztc_apply_wire rejects the completed blob at the very end. That is
+     *         the whole point of keeping layer_count out of expected_len, so it
+     *         is worth a sequence of its own. */
+    if (g_backend == BACKEND_TP || g_backend == BACKEND_ZTC) {
         reset_both();
         memcpy(scratch, w, total);
-        scratch[5] = 0x00; /* clear the GESTURES flag: declared length now differs */
+        if (g_backend == BACKEND_TP) {
+            scratch[5] = 0x00; /* clear the GESTURES flag: declared length now differs */
+        } else {
+            scratch[3] = 0xFF; /* layer_count above ZTC_MAX_LAYERS */
+        }
         for (uint16_t off = 0; off < total; off += 100) {
             uint16_t n = (uint16_t)((total - off < 100) ? (total - off) : 100);
             struct evt f = {&scratch[off], n, 0, false, 4000 + off};
@@ -549,10 +686,25 @@ static void seq_malformed(void) {
         }
     }
 
+    /* a layer_count the build cannot hold, in the FIRST chunk. For enc this is a
+     * framing rejection (the count sizes the wire, so expected_len returns 0);
+     * for ztc it stages normally and is caught by apply at the end (covered just
+     * above). Either way the two implementations must agree. */
+    if (g_backend == BACKEND_ENC) {
+        reset_both();
+        memcpy(scratch, w, total);
+        scratch[3] = 0xFF;
+        struct evt f = {scratch, 32, 0, false, 4500};
+        step(&f);
+        scratch[3] = 0; /* layer_count 0 is refused too */
+        struct evt f0 = {scratch, 32, 0, false, 4510};
+        step(&f0);
+    }
+
     /* an unknown version in the first chunk: expected_len returns 0 => reject */
     reset_both();
     memcpy(scratch, w, total);
-    scratch[g_backend == BACKEND_TP ? 2 : 1] = 0x7F;
+    scratch[cur_version_off()] = 0x7F;
     struct evt e12 = {scratch, 32, 0, false, 5000};
     step(&e12);
 }
@@ -644,12 +796,33 @@ void test_wire_asm(void) {
     T_CHECK(tp_wire_len > TP_WIRE_HDR, "tp fixture wire built");
     T_EQ_INT(tp_expected_len(tp_wire), tp_wire_len, "tp fixture header declares its own length");
 
+    build_ztc_wire();
+    T_EQ_INT(ztc_expected_len(ztc_wire), ztc_wire_bytes,
+             "ztc fixture header declares its own length");
+    T_CHECK(ztc_wire_bytes < TP_WIRE_CAP, "ztc fixture fits the shared staging buffer");
+
+    build_enc_wire();
+    T_EQ_INT(enc_expected_len(enc_wire), enc_wire_bytes,
+             "enc fixture header declares its own length");
+    T_CHECK(enc_wire_bytes < TP_WIRE_CAP, "enc fixture fits the shared staging buffer");
+
     g_mismatches = 0;
     g_events = 0;
 
     g_backend = BACKEND_TP;
     run_all_sequences();
     seq_done("REAL trackpad codec: every event matches the reference");
+
+    /* The two services that moved onto the assembler on 2026-09-05. Same driver,
+     * same sequences (ATT Write Long incl. the Prepare pass, WinRT offset-0 runs,
+     * mixtures, malformed sequences, 12k fuzz events), against the real codecs. */
+    g_backend = BACKEND_ZTC;
+    run_all_sequences();
+    seq_done("REAL trackball codec: every event matches the reference");
+
+    g_backend = BACKEND_ENC;
+    run_all_sequences();
+    seq_done("REAL encoder codec: every event matches the reference");
 
     g_backend = BACKEND_SYN;
     for (uint16_t total = SYN_HDR; total <= 900; total = (uint16_t)(total * 3 + 7)) {
