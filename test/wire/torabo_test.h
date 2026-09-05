@@ -60,6 +60,8 @@ void test_encoder(void);
 void test_macros(void);
 void test_combos(void);
 void test_caps(void);
+void test_caps_decl(void);  /* PLAN phase 9 "declared" fixture (real hw pattern); own binary, see main_decl.c */
+void test_caps_decl2(void); /* PLAN phase 9 second "declared" fixture (double config); own binary, see main_decl2.c */
 void test_live_feed(void);
 void test_contracts(void);
 void test_coast(void);

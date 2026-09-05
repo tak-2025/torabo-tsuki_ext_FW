@@ -13,6 +13,7 @@
  */
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -99,11 +100,20 @@ int main(int argc, char **argv) {
         encode = enc_encode_wire;
         ver_off = 2;
     } else if (strcmp(feat, "dm") == 0) {
-        /* macros: READ is all slots, WRITE is one slot at a time, so a stored
-         * READ blob is replayed slot by slot the way a restore does it. */
-        if (in_len != DM_READ_WIRE_LEN) {
-            printf("dm READ blob is %zu B, this build expects %d B\n", in_len,
-                   (int)DM_READ_WIRE_LEN);
+        /* macros: READ is all slots (+ v2 NAME block, PLAN phase 8); WRITE is
+         * one slot's steps (v1) or one slot's name (v2) at a time, so a stored
+         * READ blob is replayed the way a restore does it.
+         *
+         * A field backup taken before phase 8 is DM_READ_WIRE_LEN_V1 (1624 B,
+         * no name block); one taken after is the full DM_READ_WIRE_LEN
+         * (1964 B). Both are accepted -- this IS the "旧 v1 バックアップの
+         * steps が v1 WRITE で通る" guarantee the plan requires be tested. */
+        bool is_v2 = false;
+        if (in_len == (size_t)DM_READ_WIRE_LEN) {
+            is_v2 = true;
+        } else if (in_len != (size_t)DM_READ_WIRE_LEN_V1) {
+            printf("dm READ blob is %zu B, this build expects %d B (v1) or %d B (v2)\n", in_len,
+                   (int)DM_READ_WIRE_LEN_V1, (int)DM_READ_WIRE_LEN);
             return 1;
         }
         for (uint8_t k = 0; k < DM_SLOTS; k++) {
@@ -114,7 +124,7 @@ int main(int argc, char **argv) {
                 return 1;
             }
             uint8_t w[DM_WRITE_MAX];
-            w[0] = DM_VERSION;
+            w[0] = DM_VERSION_V1; /* steps WRITE stays v1 forever, even against v1 backups */
             w[1] = k;
             w[2] = used;
             memcpy(&w[3], &sp[1], (size_t)used * DM_WIRE_STEP);
@@ -124,16 +134,55 @@ int main(int argc, char **argv) {
                 return 1;
             }
         }
+        if (is_v2) {
+            /* the blob also carries names -- replay those via the v2 name op,
+             * exactly as a v2-aware restore would. */
+            for (uint8_t k = 0; k < DM_SLOTS; k++) {
+                const uint8_t *np = &in_buf[DM_READ_NAMES_BASE + (uint32_t)k * DM_READ_NAME];
+                uint8_t name_len = np[0];
+                if (name_len > DM_NAME_MAX) {
+                    printf("slot %u claims name_len %u\n", k, name_len);
+                    return 1;
+                }
+                uint8_t w[DM_NAME_WRITE_LEN];
+                w[0] = DM_VERSION_V2;
+                w[1] = k;
+                w[2] = DM_WRITE_KIND_NAME;
+                w[3] = name_len;
+                memcpy(&w[4], &np[1], DM_NAME_MAX);
+                int rc = dm_apply_write_wire(w, DM_NAME_WRITE_LEN);
+                if (rc) {
+                    printf("slot %u name rejected (%d)\n", k, rc);
+                    return 1;
+                }
+            }
+        }
         uint16_t la = 0;
         if (dm_encode_read_wire(enc_a, sizeof(enc_a), &la) != 0) {
             printf("re-encode failed\n");
             return 1;
         }
-        if (la != in_len || memcmp(enc_a, in_buf, la) != 0) {
-            printf("slot-by-slot restore did NOT reproduce the blob\n");
-            return 1;
+        if (is_v2) {
+            if (la != in_len || memcmp(enc_a, in_buf, la) != 0) {
+                printf("slot-by-slot restore did NOT reproduce the v2 blob\n");
+                return 1;
+            }
+            printf("v%u, %u slot(s) restored (steps+names), byte-identical", in_buf[2],
+                   (unsigned)DM_SLOTS);
+        } else {
+            /* v1 input: this build's READ always emits v2, so byte 2 (version)
+             * is expected to differ (1 -> 2) and a name block is appended that
+             * the v1 blob never had. What must still hold is that the steps
+             * themselves -- everything in the slot region other than that one
+             * version byte -- round-trip losslessly. */
+            if ((size_t)la != (size_t)DM_READ_WIRE_LEN || memcmp(enc_a, in_buf, 2) != 0 ||
+                memcmp(&enc_a[3], &in_buf[3], (size_t)DM_READ_WIRE_LEN_V1 - 3) != 0) {
+                printf("v1 backup restore did NOT reproduce the stored steps\n");
+                return 1;
+            }
+            printf("v%u backup -> steps restored losslessly onto the v2 (%d B) build", in_buf[2],
+                   (int)DM_READ_WIRE_LEN);
         }
-        printf("v%u, %u slot(s) restored, byte-identical", in_buf[2], (unsigned)DM_SLOTS);
         printf("\n");
         return 0;
     } else if (strcmp(feat, "cb") == 0) {

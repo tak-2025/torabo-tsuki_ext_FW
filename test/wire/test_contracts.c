@@ -58,6 +58,7 @@ void test_contracts(void) {
     T_EQ_INT(TORABO_FEAT_LIVE_FEED, 8, "caps id live_feed = 8");
     T_EQ_INT(TORABO_FEAT_RPC_TUNNEL, 9, "caps id rpc_tunnel = 9");
     T_EQ_INT(TORABO_FEAT_TIMING, 10, "caps id timing = 10");
+    T_EQ_INT(TORABO_FEAT_MODULES, 11, "caps id modules = 11 (PLAN phase 9)");
 
     /* §0.3 live_feed */
     T_EQ_INT(LIVE_FEED_PROTO_VER, 1, "live_feed PROTO_VER 1 (never bumped)");
@@ -103,15 +104,28 @@ void test_contracts(void) {
     T_EQ_INT(ENC_WIRE_LAYER, 12, "enc layer 12B (cw+ccw+btn)");
 
     T_EQ_INT(DM_MAGIC, 0x6D64, "dm magic 0x6D64");
-    T_EQ_INT(DM_VERSION, 1, "dm version 1");
+    /* PLAN phase 8: dm v2 adds a per-slot NAME block, appended to the READ
+     * wire. DM_VERSION is the current/newest wire (now 2); DM_VERSION_V1 is
+     * pinned separately because the steps WRITE op speaks it forever. */
+    T_EQ_INT(DM_VERSION_V1, 1, "dm version v1 = 1 (steps WRITE op, forever)");
+    T_EQ_INT(DM_VERSION_V2, 2, "dm version v2 = 2 (READ wire + name WRITE op)");
+    T_EQ_INT(DM_VERSION, 2, "dm version (current READ wire) = 2");
     T_EQ_INT(DM_SLOTS, 20, "dm slots 20");
     T_EQ_INT(DM_STEPS, 16, "dm steps per slot 16");
+    T_EQ_INT(DM_NAME_MAX, 16, "dm name field 16B (five Japanese characters)");
     T_EQ_INT(DM_WIRE_STEP, 5, "dm step 5B");
     T_EQ_INT(DM_READ_HDR, 4, "dm read header 4B");
     T_EQ_INT(DM_READ_SLOT, 81, "dm read slot 81B");
-    T_EQ_INT(DM_READ_WIRE_LEN, 1624, "dm read wire 1624B");
+    T_EQ_INT(DM_READ_WIRE_LEN_V1, 1624, "dm read wire v1 (slot region) 1624B");
+    T_EQ_INT(DM_READ_NAME, 17, "dm read name entry 17B (name_len u8 + name[16])");
+    T_EQ_INT(DM_READ_NAMES_BASE, 1624, "dm name block starts right after the slot region");
+    T_EQ_INT(DM_READ_WIRE_LEN, 1964, "dm read wire v2 (slots+names) 1964B");
+    T_CHECK(DM_READ_WIRE_LEN <= 2048, "dm v2 READ wire fits the 2048B tunnel blob budget");
     T_EQ_INT(DM_WRITE_HDR, 3, "dm write header 3B");
     T_EQ_INT(DM_WRITE_MAX, 83, "dm write max 83B");
+    T_EQ_INT(DM_WRITE_KIND_STEPS, 0, "dm v2 write kind STEPS = 0 (reserved, rejected)");
+    T_EQ_INT(DM_WRITE_KIND_NAME, 1, "dm v2 write kind NAME = 1");
+    T_EQ_INT(DM_NAME_WRITE_LEN, 20, "dm v2 name WRITE op is a fixed 20B");
 
     T_EQ_INT(CB_MAGIC, 0x6263, "cb magic 0x6263");
     T_EQ_INT(CB_VERSION, 1, "cb version 1");
@@ -226,4 +240,41 @@ void test_contracts(void) {
     T_EQ_INT(TORABO_CAPS_LIVE_FEED_DIAG, 0x0001, "caps bit LIVE_FEED_DIAG");
     T_EQ_INT(TORABO_CAPS_TUNNEL_NOTIFY, 0x0001, "caps bit TUNNEL_NOTIFY");
     T_EQ_INT(TORABO_CAPS_TIMING_SPLIT_DEBOUNCE, 0x0001, "caps bit TIMING_SPLIT_DEBOUNCE");
+
+    /* PLAN phase 9: header CENTRAL field, unchanged since the phase's original
+     * commit — a genuinely 1-of-3 choice, so torabo_caps_side survives here. */
+    T_EQ_INT(TORABO_CAPS_SIDE_UNKNOWN, 0, "caps side UNKNOWN = 0");
+    T_EQ_INT(TORABO_CAPS_SIDE_LEFT, 1, "caps side LEFT = 1");
+    T_EQ_INT(TORABO_CAPS_SIDE_RIGHT, 2, "caps side RIGHT = 2");
+    T_EQ_INT(TORABO_CAPS_HDR_CENTRAL_SHIFT, 0, "caps hdr _rsv central shift = bit0");
+    T_EQ_INT(TORABO_CAPS_HDR_CENTRAL_MASK, 0x03, "caps hdr _rsv central mask = bits0-1");
+
+    /* PLAN phase 9, re-redesigned 2026-09-03 (the SECOND redesign): module
+     * placement is ONE row (TORABO_FEAT_MODULES) of four 4-bit slot values,
+     * not bits spread across the ztc/enc caps words (both of this phase's
+     * earlier schemes — a 1-of-3 enum pair, then per-feature bitmasks — are
+     * gone; neither TORABO_CAPS_ZTC_BALL_x nor TORABO_CAPS_ENC_LEFT_x / _RIGHT_x
+     * exist any more). torabo_caps_slot numbering is INDEPENDENT of
+     * tp_meta_kind (zmk_trackpad_config/config.h): the two enums describe
+     * overlapping hardware but are different contracts, so apps that need both
+     * keep their own mapping table. NONE=15 is an explicit "this slot is
+     * empty", distinct from UNDECLARED=0 which is what an old firmware or an
+     * unset conf reports. */
+    T_EQ_INT(TORABO_CAPS_SLOT_UNDECLARED, 0, "caps slot UNDECLARED = 0");
+    T_EQ_INT(TORABO_CAPS_SLOT_BALL, 1, "caps slot BALL = 1");
+    T_EQ_INT(TORABO_CAPS_SLOT_PAD, 2, "caps slot PAD = 2");
+    T_EQ_INT(TORABO_CAPS_SLOT_SWITCH4, 3, "caps slot SWITCH4 = 3 (reserved, builder N/A)");
+    T_EQ_INT(TORABO_CAPS_SLOT_DIAL, 4, "caps slot DIAL = 4");
+    T_EQ_INT(TORABO_CAPS_SLOT_ENCODER, 9, "caps slot ENCODER = 9 (self-made module)");
+    T_EQ_INT(TORABO_CAPS_SLOT_NONE, 15, "caps slot NONE = 15 (explicitly empty)");
+    T_EQ_INT(TORABO_CAPS_MOD_SLOT_BITS, 4, "caps mod slot width = 4 bits");
+    T_EQ_INT(TORABO_CAPS_MOD_SLOT_MASK, 0xF, "caps mod slot mask = 0xF");
+    T_EQ_INT(TORABO_CAPS_MOD_LEFT_STD_SHIFT, 0, "caps mod left-std shift = bit0");
+    T_EQ_INT(TORABO_CAPS_MOD_LEFT_EXT_SHIFT, 4, "caps mod left-ext shift = bit4");
+    T_EQ_INT(TORABO_CAPS_MOD_RIGHT_STD_SHIFT, 8, "caps mod right-std shift = bit8");
+    T_EQ_INT(TORABO_CAPS_MOD_RIGHT_EXT_SHIFT, 12, "caps mod right-ext shift = bit12");
+
+    /* PLAN phase 6 B-4 raised the caps table cap 10->16; phase 9 raises it
+     * again 16->32 for headroom (a bigger static buffer only). */
+    T_EQ_INT(TORABO_CAPS_MAX_FEATURES, 32, "caps MAX_FEATURES = 32 (PLAN phase 9)");
 }

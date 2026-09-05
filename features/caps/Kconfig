@@ -42,7 +42,69 @@ config TORABO_FW_VERSION_MINOR
 
 config TORABO_FW_VERSION_PATCH
     int "Torabo firmware version: patch"
+    default 1
+
+config TORABO_CENTRAL_SIDE
+    int "Which physical half is the central (0=unknown/1=left/2=right)"
     default 0
+    help
+      Purely descriptive (PLAN-ext-fw-refactor.md phase 9): reported in the caps
+      descriptor header's `_rsv` byte so Torabo-Studio's FW info tab can show
+      which half is central without depending on the LED feature's
+      CENTRAL_IS_LEFT bit, which simply doesn't exist in an LED-less build.
+      Doesn't affect any runtime behavior — the firmware builder sets this from
+      the hardware pattern the user picked. Leave at 0 (unknown) if unsure; the
+      app falls back to its existing guess.
+
+config TORABO_SLOT_LEFT_STD
+    int "What is plugged into the left half's standard connector (0=undeclared/1=ball/2=pad/3=4-way switch/4=dial/9=encoder/15=none)"
+    range 0 15
+    default 0
+    help
+      Purely descriptive (PLAN-ext-fw-refactor.md phase 9, re-redesigned
+      2026-09-03 into one 4-bit-per-slot declaration — this is that redesign's
+      whole point: one Kconfig, one caps nibble, one physical connector, no
+      per-feature bit spreading). Reported in the TORABO_FEAT_MODULES caps row
+      so Torabo-Studio's FW info tab can show exactly what is on this slot
+      without guessing. Doesn't affect any runtime behavior. 0 = undeclared
+      (the default; also what every conf that never sets this reports, so an
+      old build and a build that genuinely doesn't know look the same — both
+      fall back to Studio's existing process-of-elimination guess). 1 = a
+      trackball, 2 = a mini-trackpad, 3 = a 4-way switch module (reserved; the
+      builder does not offer it yet), 4 = a high-resolution dial, 9 = a rotary
+      encoder (a self-made module, hence the gap), 15 = explicitly nothing
+      here. These numbers are independent of the trackpad TP_META kind
+      numbering; an app that needs both keeps its own mapping table. Set by the
+      firmware builder from the hardware pattern the user picked; leave at 0 if
+      unsure.
+
+config TORABO_SLOT_LEFT_EXT
+    int "What is plugged into the left half's extension connector (0=undeclared/1=ball/2=pad/3=4-way switch/4=dial/9=encoder/15=none)"
+    range 0 15
+    default 0
+    help
+      Same meaning as TORABO_SLOT_LEFT_STD, for the left half's extension
+      connector instead of its standard connector. A ball never appears here:
+      the extension FFC carries no SPI, so a ball is always on a half's own
+      standard connector — the firmware builder never sets this to 1, but the
+      range still allows it since this is a plain descriptive int, not a
+      hardware interlock.
+
+config TORABO_SLOT_RIGHT_STD
+    int "What is plugged into the right half's standard connector (0=undeclared/1=ball/2=pad/3=4-way switch/4=dial/9=encoder/15=none)"
+    range 0 15
+    default 0
+    help
+      Same meaning as TORABO_SLOT_LEFT_STD, for the right half's standard
+      connector.
+
+config TORABO_SLOT_RIGHT_EXT
+    int "What is plugged into the right half's extension connector (0=undeclared/1=ball/2=pad/3=4-way switch/4=dial/9=encoder/15=none)"
+    range 0 15
+    default 0
+    help
+      Same meaning as TORABO_SLOT_LEFT_EXT, for the right half's extension
+      connector (no ball here either, for the same hardware reason).
 
 module-str = Torabo Caps
 source "subsys/logging/Kconfig.template.log_config"

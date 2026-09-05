@@ -148,6 +148,46 @@ for n in ${LAYERS}; do
     fi
 done
 
+# ---- PLAN-ext-fw-refactor.md phase 9: the "declared" module-layout fixtures -
+# CONFIG_TORABO_CENTRAL_SIDE / _SLOT_LEFT_STD / _LEFT_EXT / _RIGHT_STD / _RIGHT_EXT
+# (re-redesigned 2026-09-03 into one MODULES row of four 4-bit slot values)
+# only affect caps.c and are independent of ZMK_KEYMAP_LAYERS_LEN, so these are
+# two extra builds (not part of the LAYERS sweep above), each compiling only
+# caps.c against the baseline config PLUS its own override header (the second
+# -include applies its #undef/#define after the baseline's). Deliberately two
+# separate binaries/mains (main_decl.c / main_decl2.c), so test_caps.c's
+# all-zero golden vector, the primary real-hardware fixture and the secondary
+# double-config fixture never compile against each other's overrides.
+decl_bin="${BUILD_DIR}/wire_tests_decl"
+echo
+echo "============================================================="
+echo ">>> building the PLAN phase 9 'declared' caps fixture (primary: real hw)"
+echo "============================================================="
+"${CC}" "${CFLAGS[@]}" "-DZMK_KEYMAP_LAYERS_LEN=10" \
+    -include "${HERE}/stubs/torabo_test_config_decl.h" \
+    "${INCLUDES[@]}" \
+    "${MODULE_DIR}/features/caps/src/caps.c" \
+    "${HERE}/main_decl.c" "${HERE}/test_caps_decl.c" \
+    -o "${decl_bin}"
+if ! "${decl_bin}"; then
+    rc=1
+fi
+
+decl2_bin="${BUILD_DIR}/wire_tests_decl2"
+echo
+echo "============================================================="
+echo ">>> building the PLAN phase 9 'declared' caps fixture (secondary: double config)"
+echo "============================================================="
+"${CC}" "${CFLAGS[@]}" "-DZMK_KEYMAP_LAYERS_LEN=10" \
+    -include "${HERE}/stubs/torabo_test_config_decl2.h" \
+    "${INCLUDES[@]}" \
+    "${MODULE_DIR}/features/caps/src/caps.c" \
+    "${HERE}/main_decl2.c" "${HERE}/test_caps_decl2.c" \
+    -o "${decl2_bin}"
+if ! "${decl2_bin}"; then
+    rc=1
+fi
+
 # ---- optional: replay a REAL local backup (never committed, never in CI) -----
 if [ -n "${TORABO_BACKUP_JSON:-}" ]; then
     echo

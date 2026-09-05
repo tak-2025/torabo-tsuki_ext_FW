@@ -16,7 +16,29 @@
 /* ---- caps: firmware version reported in the descriptor header ------------- */
 #define CONFIG_TORABO_FW_VERSION_MAJOR 0
 #define CONFIG_TORABO_FW_VERSION_MINOR 1
-#define CONFIG_TORABO_FW_VERSION_PATCH 0
+#define CONFIG_TORABO_FW_VERSION_PATCH 1
+
+/* CONFIG_TORABO_CAPS itself: gates the TORABO_FEAT_MODULES row (always added
+ * whenever the caps descriptor is built at all, PLAN phase 9). This is the
+ * menuconfig bool, not CONFIG_TORABO_CAPS_BLE (the GATT service, deliberately
+ * left undefined above — host tests never touch Bluetooth). */
+#define CONFIG_TORABO_CAPS 1
+
+/* ---- caps: PLAN phase 9 module-layout declaration bits (re-redesigned
+ * 2026-09-03: one 4-bit slot value per physical connector, replacing the two
+ * earlier per-feature schemes) --------------------------------------------
+ * The baseline fixture for this file is "conf doesn't set these" — every real
+ * Kconfig int defaults to 0 when unset, so this is not a special case, it's
+ * the literal default. 0 = TORABO_CAPS_SLOT_UNDECLARED on all four slots,
+ * which is why the 52B golden vector in test_caps.c has an all-zero MODULES
+ * row: this is what every conf that never adopts the new Kconfig lines
+ * produces. torabo_test_config_decl.h overrides these to a real hardware
+ * fixture for the "declared" build (see test_caps_decl.c). */
+#define CONFIG_TORABO_CENTRAL_SIDE 0
+#define CONFIG_TORABO_SLOT_LEFT_STD 0
+#define CONFIG_TORABO_SLOT_LEFT_EXT 0
+#define CONFIG_TORABO_SLOT_RIGHT_STD 0
+#define CONFIG_TORABO_SLOT_RIGHT_EXT 0
 
 /* ---- caps: the "everything on" build the 10-feature vector describes ------ */
 #define CONFIG_ZMK_TRACKBALL_CONFIG 1

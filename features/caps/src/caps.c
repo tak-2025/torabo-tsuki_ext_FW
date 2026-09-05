@@ -43,6 +43,31 @@ static uint16_t timing_caps_bits(void) {
     return c;
 }
 
+/* PLAN phase 9 (re-redesigned 2026-09-03): one 4-bit slot value per physical
+ * connector, packed left-std/left-ext/right-std/right-ext into a single u16 —
+ * see TORABO_FEAT_MODULES's comment in caps.h for why placement now lives
+ * ONLY here and not spread across the ztc/enc caps words (both earlier
+ * per-feature schemes are gone). CONFIG_TORABO_SLOT_LEFT_STD / _LEFT_EXT /
+ * _RIGHT_STD / _RIGHT_EXT are plain int Kconfigs (range 0-4, features/caps/
+ * Kconfig) read unconditionally whenever CONFIG_TORABO_CAPS is on, same as
+ * CONFIG_TORABO_CENTRAL_SIDE below. Each is masked to 4 bits so an
+ * out-of-range conf (Kconfig `range` doesn't stop a hand-edited .config)
+ * can't bleed into a neighboring slot. Default 0 (unset conf) on all four
+ * leaves the whole word 0 = every slot undeclared, so this row is a new,
+ * empty row on every pre-this-field build. */
+static uint16_t modules_caps_bits(void) {
+    uint16_t c = 0;
+    c |= ((uint16_t)CONFIG_TORABO_SLOT_LEFT_STD & TORABO_CAPS_MOD_SLOT_MASK)
+         << TORABO_CAPS_MOD_LEFT_STD_SHIFT;
+    c |= ((uint16_t)CONFIG_TORABO_SLOT_LEFT_EXT & TORABO_CAPS_MOD_SLOT_MASK)
+         << TORABO_CAPS_MOD_LEFT_EXT_SHIFT;
+    c |= ((uint16_t)CONFIG_TORABO_SLOT_RIGHT_STD & TORABO_CAPS_MOD_SLOT_MASK)
+         << TORABO_CAPS_MOD_RIGHT_STD_SHIFT;
+    c |= ((uint16_t)CONFIG_TORABO_SLOT_RIGHT_EXT & TORABO_CAPS_MOD_SLOT_MASK)
+         << TORABO_CAPS_MOD_RIGHT_EXT_SHIFT;
+    return c;
+}
+
 /* Append one entry, dropping it (and logging) instead of overrunning `out` once
  * the table is full. `out` is always sized TORABO_CAPS_MAX_FEATURES by the only
  * caller (torabo_caps_encode's stack array); every #if block below adds at most
@@ -72,7 +97,11 @@ static uint8_t build_features(struct feat_entry *out) {
     add_feat(out, &n, (struct feat_entry){TORABO_FEAT_TRACKBALL, 3, TORABO_CAPS_ZTC_COAST});
 #endif
 #if IS_ENABLED(CONFIG_ZMK_DYNAMIC_KEYMAP)
-    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_MACROS, 1, 0});
+    /* wire v2 (PLAN phase 8) = the v1 slot region with a per-slot NAME block
+     * appended to the READ wire, plus a name-only WRITE op. Steps WRITE stays
+     * v1 forever, so this bump only matters to a client deciding whether to
+     * show/send names -- it does not change how steps are written. */
+    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_MACROS, 2, 0});
 #endif
 #if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBOS)
     add_feat(out, &n, (struct feat_entry){TORABO_FEAT_COMBOS, 1, 0});
@@ -112,6 +141,14 @@ static uint8_t build_features(struct feat_entry *out) {
      * so it is a caps bit rather than a wire bump. */
     add_feat(out, &n, (struct feat_entry){TORABO_FEAT_TIMING, 1, timing_caps_bits()});
 #endif
+#if IS_ENABLED(CONFIG_TORABO_CAPS)
+    /* wire v1 = a single u16 of four 4-bit slot values (see caps.h). Always
+     * present whenever the caps descriptor itself is built, regardless of
+     * which other features are compiled in — appended last (feature id 11)
+     * so every byte of the 10 rows above is untouched by its addition (PLAN
+     * phase 9, re-redesigned 2026-09-03). */
+    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_MODULES, 1, modules_caps_bits()});
+#endif
 
     return n;
 }
@@ -132,7 +169,14 @@ int torabo_caps_encode(uint8_t *buf, uint16_t cap, uint16_t *out_len) {
     buf[4] = CONFIG_TORABO_FW_VERSION_MINOR;
     buf[5] = CONFIG_TORABO_FW_VERSION_PATCH;
     buf[6] = n;
-    buf[7] = 0;
+    /* PLAN phase 9: bit0-1 = which half is the CENTRAL (torabo_caps_side
+     * numbering), independent of any feature. CONFIG_TORABO_CENTRAL_SIDE is an
+     * int Kconfig (0/1/2) declared unconditionally alongside TORABO_FW_VERSION_*
+     * above (features/caps/Kconfig) — always defined whenever CONFIG_TORABO_CAPS
+     * is on, just like those. Default 0 (unset conf) => UNKNOWN, so this byte
+     * stays 0x00 exactly as before this field existed. */
+    buf[7] = ((uint8_t)CONFIG_TORABO_CENTRAL_SIDE << TORABO_CAPS_HDR_CENTRAL_SHIFT) &
+             TORABO_CAPS_HDR_CENTRAL_MASK;
 
     uint32_t o = TORABO_CAPS_HDR;
     for (uint8_t i = 0; i < n; i++) {

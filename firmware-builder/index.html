@@ -512,6 +512,29 @@ function genConf(model){
     lines.push(`CONFIG_ZMK_LED_CONFIG_RIGHT_PRESENT=${ledOn('right') ? 'y' : 'n'}`);
     lines.push(`CONFIG_ZMK_LED_CONFIG_CENTRAL_IS_LEFT=${model.central==='left' ? 'y' : 'n'}`);
   }
+  // モジュール構成の宣言（PLAN-ext-fw-refactor.md フェーズ9、2026-09-03 に一度ビットマスク方式へ
+  // 再設計した後、同日中に再々設計——「4スロットにそれぞれ何が載っているかを1行で持てば済む」
+  // という指摘の通り、機能ごとにビットを分散させる複雑さをやめ、4つの物理コネクタ（左標準/
+  // 左拡張/右標準/右拡張）それぞれの中身を1個の Kconfig 整数で申告するだけにした。値は
+  // caps.h の enum torabo_caps_slot: 0=未申告/1=ボール/2=パッド/3=4方向スイッチ（予約・
+  // builder 未対応）/4=高分解能ダイヤル/9=ロータリーエンコーダ（自作品なので離れた番号）/
+  // 15=なし。上の TP_META kind とは別物の番号体系なので、共有せず独立に定義する
+  // （対応表が要るアプリは各自で持つ）。builder は配置を全て知っているので、
+  // 4行を常に出力する——「なし」も明示的に申告し、0=未申告（宣言前の旧FWや本ブロック非対応の
+  // confと区別しない）を残すのは builder が一度も選んだことがない列（存在しないケース）だけ。
+  // central 側は LED の有無に関わらず常に分かるので、LED ブロックの外＝常時出力。
+  {
+    const SIDE_NUM = { left:1, right:2 };
+    // caps の slot 値（TP_KIND とは別物・共有しないこと）
+    const SLOT_KIND = { ball:1, pad:2, switch4:3, dial:4, encoder:9, none:15 };
+    lines.push(`# モジュール構成の宣言（Studio の FW情報タブ用。0=不明のままでも動作に影響なし）`);
+    lines.push(`CONFIG_TORABO_CENTRAL_SIDE=${SIDE_NUM[model.central]}`);
+    const ld = sideDevices('left'), rd = sideDevices('right');
+    lines.push(`CONFIG_TORABO_SLOT_LEFT_STD=${SLOT_KIND[ld.std]}`);
+    lines.push(`CONFIG_TORABO_SLOT_LEFT_EXT=${SLOT_KIND[ld.ext]}`);
+    lines.push(`CONFIG_TORABO_SLOT_RIGHT_STD=${SLOT_KIND[rd.std]}`);
+    lines.push(`CONFIG_TORABO_SLOT_RIGHT_EXT=${SLOT_KIND[rd.ext]}`);
+  }
   // トラックパッド ライブ設定を使うときだけ。Studio のデバイス名がこれで決まる。
   if (state.features.trackpadlive){
     const { dev0, dev1 } = tpDeviceMeta(model);

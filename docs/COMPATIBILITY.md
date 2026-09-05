@@ -55,27 +55,27 @@ A-1）であり、feature_id/GATT/wire そのものには触れない。
 |---|---|---|
 | magic | `0x4354`（"TC" LE） | `caps.h:31` |
 | desc_ver | `1` | `caps.h:32` |
-| ヘッダ長 | 8B 固定（`TORABO_CAPS_HDR`） | `caps.h:108` |
-| 行長 | 4B 固定（`TORABO_CAPS_FEAT`） | `caps.h:109` |
-| 最大枠数 | 16（`TORABO_CAPS_MAX_FEATURES`、フェーズ6 B-4 で 10→16） | `caps.h:110` |
-| wire cap | `8 + 16*4 = 72B` | `caps.h:111` |
-| feature id 列挙 | append-only、`TORABO_FEAT_TRACKBALL=1`〜`TORABO_FEAT_TIMING=10` | `caps.h:35-46` |
-| wire レイアウト解説コメント | ヘッダ/行の各フィールド、ATT Read Long への言及 | `caps.h:95-107` |
+| ヘッダ長 | 8B 固定（`TORABO_CAPS_HDR`） | `caps.h:188` |
+| 行長 | 4B 固定（`TORABO_CAPS_FEAT`） | `caps.h:189` |
+| 最大枠数 | 32（`TORABO_CAPS_MAX_FEATURES`、フェーズ6 B-4 で 10→16、フェーズ9 で 16→32） | `caps.h:190` |
+| wire cap | `8 + 32*4 = 136B` | `caps.h:191` |
+| feature id 列挙 | append-only、`TORABO_FEAT_TRACKBALL=1`〜`TORABO_FEAT_TIMING=10`、`TORABO_FEAT_MODULES=11`（フェーズ9） | `caps.h:35-46` |
+| wire レイアウト解説コメント | ヘッダ/行の各フィールド、ATT Read Long への言及 | `caps.h:171-185` |
 
 エンコード実装: `features/caps/src/caps.c`
-- `build_features()`（`caps.c:65-117`）— Kconfig の `#if IS_ENABLED(...)` だけで
-  組み立てるため、実バイナリと記述子が乖離しない設計。現在 **10/16 枠使用**
-  （trackball, macros, combos, trackpad, encoder, led, reserved_layers, live_feed,
-  rpc_tunnel, timing の 10 個。`caps.c:68-114`）。
-- オーバーラン防止ガード `add_feat()`（フェーズ2 A-5 で追加、`caps.c:46-60`）—
-  `*n >= TORABO_CAPS_MAX_FEATURES` で弾いて `LOG_ERR` するのみ。17機能目を足すのに
+- `build_features()` — Kconfig の `#if IS_ENABLED(...)` だけで組み立てるため、実バイナリと
+  記述子が乖離しない設計。現在 **11/32 枠使用**（trackball, macros, combos, trackpad,
+  encoder, led, reserved_layers, live_feed, rpc_tunnel, timing の 10 個 + フェーズ9の
+  modules 行）。
+- オーバーラン防止ガード `add_feat()`（フェーズ2 A-5 で追加）—
+  `*n >= TORABO_CAPS_MAX_FEATURES` で弾いて `LOG_ERR` するのみ。次の機能を足すのに
   `TORABO_CAPS_MAX_FEATURES` を上げ忘れても **スタック破壊はしない**（ログに出て黙って
   1機能落ちるだけ）が、caps が実際より少ない機能数を報告する事故にはなる。
-- 実際のエンコード: `torabo_caps_encode()`（`caps.c:119-149`）。
-- caps GATT サービス（read-only, UUID e1f4a000/a001）: `caps.c:157-189`。
-  UUID 対応コメント: `caps.c:151-155`。
+- 実際のエンコード: `torabo_caps_encode()`。
+- caps GATT サービス（read-only, UUID e1f4a000/a001）: `caps.c` 末尾（`CONFIG_TORABO_CAPS_BLE`
+  ガード内）。
 
-**「10/10 満杯」は FW 側の自己制約であり、アプリ側の壁ではない**。アプリ側デコーダ
+**「枠が満杯」は FW 側の自己制約であり、アプリ側の壁ではない**。アプリ側デコーダ
 （`torabo-studio/src/caps/toraboCaps.ts:36-64`）は `feature_count` 駆動でパースし、
 desc_ver・feature_count 双方について前方互換の契約 a〜d を明文化している
 （同ファイル冒頭コメント、特に 35-68 行）:
@@ -93,8 +93,59 @@ desc_ver・feature_count 双方について前方互換の契約 a〜d を明文
 `features/caps/src/caps.c`。torabo-studio 側は本フェーズのスコープ外のため未修正
 （保留事項として §13 に記載）。
 
-ゴールデンテスト: `test/wire/test_caps.c` が現行 10-feature ビルドの 48B 記述子を
-バイト単位で固定（`test_caps.c:21-41`）。
+ゴールデンテスト: `test/wire/test_caps.c` が現行 11-feature ビルドの 52B 記述子を
+バイト単位で固定。同ファイルは加えて「MODULES 行を除く旧10行がフェーズ9追加の前後で
+1バイトも変わらない」ことも独立にアサートする（`pre_phase9_rows` 比較）。
+
+**モジュール構成の宣言（PLAN-ext-fw-refactor.md フェーズ9。2026-09-03 中に二度再設計 —
+①初版は機能ごとの 1-of-3 side/conn enum、②はそれをビットマスク化して ztc/enc の
+caps ワードへ分散、③現行版は「4つの物理コネクタそれぞれに何が載っているかを1行で
+持つ」に単純化。①②はどちらも撤去済み）**:
+
+新設 feature 行 `TORABO_FEAT_MODULES = 11`（append-only の最新番号。wire_ver=1）を、
+caps が有効な限り常に末尾に追加する。この行の caps ワード（u16）は 4bit×4スロット:
+
+| bit範囲 | スロット | Kconfig |
+|---|---|---|
+| bit0-3 | 左 標準 | `CONFIG_TORABO_SLOT_LEFT_STD` |
+| bit4-7 | 左 拡張 | `CONFIG_TORABO_SLOT_LEFT_EXT` |
+| bit8-11 | 右 標準 | `CONFIG_TORABO_SLOT_RIGHT_STD` |
+| bit12-15 | 右 拡張 | `CONFIG_TORABO_SLOT_RIGHT_EXT` |
+
+各 4bit の値（`enum torabo_caps_slot`）。この番号は trackpad の
+`enum tp_meta_kind` とは**独立**（別物の契約）で、両方を扱うアプリ側が対応表
+(mapping) を持つ:
+
+| 値 | 意味 |
+|---|---|
+| 0 | 未申告（`TORABO_CAPS_SLOT_UNDECLARED`。Kconfig 未設定の既定値＝旧FW/未対応confと同じ） |
+| 1 | トラックボール（`TORABO_CAPS_SLOT_BALL`） |
+| 2 | ミニトラックパッド（`TORABO_CAPS_SLOT_PAD`） |
+| 3 | 4方向スイッチモジュール（`TORABO_CAPS_SLOT_SWITCH4`。予約。builder 未対応） |
+| 4 | 高分解能ダイヤル（`TORABO_CAPS_SLOT_DIAL`） |
+| 9 | ロータリーエンコーダ（`TORABO_CAPS_SLOT_ENCODER`。自作品なので離れた番号） |
+| 15 | なし（`TORABO_CAPS_SLOT_NONE`。builder の明示的な「空」申告。0=未申告とは区別される） |
+
+- ヘッダ `_rsv` bit0-1 = central 側（`torabo_caps_side`: 0=不明/1=左/2=右、
+  `CONFIG_TORABO_CENTRAL_SIDE` から）は本フェーズ最初のコミット以来不変。
+- トラックボール／エンコーダの caps ワードは配置ビットを一切持たない（①②で追加した
+  `TORABO_CAPS_ZTC_BALL_*` / `TORABO_CAPS_ENC_LEFT_*`/`_RIGHT_*`、Kconfig の
+  `TORABO_TRACKBALL_SIDES` / `TORABO_ENCODER_SLOTS` は全廃止）。ztc 行は
+  `TORABO_CAPS_ZTC_COAST` のみ、enc 行は caps 0（フェーズ9以前の値）に戻した。
+- 実装: `caps.h` の `enum torabo_caps_slot` と `TORABO_CAPS_MOD_*` マクロ、`caps.c` の
+  `modules_caps_bits()`。Kconfig: `features/caps/Kconfig`（`if TORABO_CAPS` 内、
+  `TORABO_CENTRAL_SIDE` の隣）。
+- `TORABO_CAPS_MAX_FEATURES` を 16→32 に再度引き上げ（desc_ver=1 据え置き、記述子は
+  count 駆動のため wire 自体は不変。static バッファが 64B 増えるのみ）。
+- firmware-builder: `genConf()` が `CONFIG_TORABO_CENTRAL_SIDE` に続けて上記4行を
+  **常に**出力する（標準スロットは `sideDevices(side).std`、拡張スロットは
+  `sideDevices(side).ext` を ball→1/pad→2/dial→4/encoder→9/none→15 でマッピング。
+  TP_META の kind とは別物なので、builder 側でも共有せず独立に定義する）。
+- ゴールデンテスト: `test/wire/test_caps_decl.c`（主フィクスチャ＝現行実機の右central・
+  右ボール標準・左エンコーダ標準・両側拡張パッド構成。MODULES caps = `0x2129`、
+  torabo-studio 側ゴールデンと共有）と `test_caps_decl2.c`（副フィクスチャ＝ダブル
+  ボール＋両拡張エンコーダの stress 構成。`0x9191`）。`test_contracts.c` が
+  feature id・シフト・マスク・スロット値をリテラルでピン留め。
 
 ---
 
@@ -209,19 +260,25 @@ WRITE は v2（coast無し）・v3 の両方を受理、READ は常に v3 で返
 
 magic/version チェック: `features/encoder/src/config_state.c:123`。
 
-### macros (dm) — v1
+### macros (dm) — v1/v2（v2 = フェーズ8 名前ブロック追記、2026-09-03）
 
 | 定数 | 値 | file:line |
 |---|---|---|
-| `DM_MAGIC` | `0x6D64` | `features/macros/include/zmk_dynamic_keymap/dmac.h:21` |
-| `DM_VERSION` | `1` | `dmac.h:22` |
-| `DM_SLOTS` | 20 | `dmac.h:23` |
-| `DM_READ_HDR` / `DM_READ_WIRE_LEN` | 4B / `HDR+20*81` | `dmac.h:34, 36` |
-| `DM_WRITE_HDR` / `DM_WRITE_MAX` | 3B / … | `dmac.h:38-39` |
+| `DM_MAGIC` | `0x6D64` | `features/macros/include/zmk_dynamic_keymap/dmac.h` |
+| `DM_VERSION_V1` / `DM_VERSION_V2` | 1 / 2（READ は常に v2 を出す） | 同上 |
+| `DM_SLOTS` / `DM_NAME_MAX` | 20 / 16 | 同上 |
+| `DM_READ_WIRE_LEN_V1` | 1624B（v1 本体、レイアウト不変） | 同上 |
+| `DM_READ_WIRE_LEN` | 1964B = v1 本体 + slot_count×17B 名前ブロック | 同上 |
+| `DM_NAME_WRITE_LEN` | 20B 固定（name op） | 同上 |
 
-WRITE は1スロットずつ、magicなし・`buf[0]==DM_VERSION` で検証
-（`features/macros/src/config_state.c:85-91`、チェック自体は `:89`）。READ は magic 付き
-フルダンプ（`config_state.c:127` 付近）。
+- WRITE steps は **v1 のまま不変**（`[ver=1][slot][used_len][steps…]`、名前を温存）。
+- WRITE name は v2 の固定 20B `[ver=2][slot][kind=1][name_len][name[16] zero-pad]` のみ。
+  `kind=0`・len≠20・slot 範囲外・`name_len>16` は拒否。UTF-8 妥当性は検証しない（アプリ責務）。
+- READ の名前ブロックは **slot_count 駆動**（欠落した v2 blob は破損として拒否）。
+  未設定スロットは `name_len=0`。READ で `name_len>16` を出してはならない。
+- 正はアプリ側参照実装 `torabo-studio/src/dynamic_macros/dmacConfig.ts` と
+  そのゴールデンバイトテスト（FW 側 `test/wire/test_macros.c` がベクタを共有）。
+- 旧 v1 バックアップは steps の v1 WRITE で復元可（名前は触られない）。
 
 ### combos (cb) — v1
 
@@ -268,7 +325,8 @@ magic/version チェック: `features/led/src/config_state.c:113`。
 | `enc/wire` | `features/encoder/src/config_state.c:182-183` | `:192` |
 | `ledx/wire` | `features/led/src/config_state.c:183-184` | `:193` |
 | `tmg/wire` | `features/timing/src/config_state.c:306-307` | `:316` |
-| `dmk/sN`（スロット別） | `features/macros/src/config_state.c:150` | `:166-167` |
+| `dmk/sN`（スロット別 steps） | `features/macros/src/config_state.c` | 同ファイル |
+| `dmk/nN`（スロット別 名前、フェーズ8 追加） | `features/macros/src/config_state.c` | 同ファイル |
 | `cmb/sN`（スロット別） | `features/combos/src/combo_state.c:224` | `:235-236` |
 
 `dmk/sN` / `cmb/sN` は `snprintf(key, ..., KEY "/s%u", slot)` によるリテラル連結

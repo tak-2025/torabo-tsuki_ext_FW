@@ -1,5 +1,12 @@
 # 設計 — torabo-tsuki ダイナミックマクロ（ライブ編集マクロ）
 
+> **2026-09-03 追記（wire v2 = マクロ名称）**: 本書の wire 記述は v1 時点のもの。
+> フェーズ8（PLAN-ext-fw-refactor.md）で READ は v2（v1 本体 1624B の末尾に
+> slot_count×17B の名前ブロックを追記、計 1964B）になり、名前専用の固定 20B
+> WRITE op（`[ver=2][slot][kind=1][name_len][name[16]]`）と NVS キー `dmk/nN` が
+> 加わった。steps の v1 WRITE・`dmk/sN`・スロット/ステップ構造は本書の通り不変。
+> 正確な v2 契約は docs/COMPATIBILITY.md §macros を参照。
+
 `zmk-feature-dynamic-macros`。**再フラッシュなしで内容を編集できるマクロ**を提供する。
 トラックボール設定（`zmk-feature-trackball-config` / DESIGN_v2.md）と同じ
 「NVS 一次 + カスタム GATT 窓 + アプリ編集 + 即適用・永続」モデルを踏襲する。
