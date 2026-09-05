@@ -1,4 +1,4 @@
-name: CI
+name: Wire golden tests and ZMK build matrix
 
 # Phase 0 safety net (PLAN-ext-fw-refactor.md):
 #   job 1 - the host wire golden tests: do the wire formats still emit the same
