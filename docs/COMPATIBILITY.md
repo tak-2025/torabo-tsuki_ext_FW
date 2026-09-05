@@ -513,6 +513,57 @@ diff が空」（PLAN フェーズ6）。
   （例: `features/timing/Kconfig:25-31`）。新しくテンプレート呼び出しを追加する時も
   この形を踏襲すること。
 
+### BLE 資源の Kconfig 値（`snippets/torabo-caps/torabo-caps.conf` 末尾、2026-09-05）
+
+Studio を BLE で繋ぐと同時に左右 split リンクが張られている状態で右 central が
+フリーズする件の応急対処として、**BLE のバッファ/スタック 7 値を
+`torabo-caps.conf` の末尾**に置いている。機能とは無関係な値がこのファイルにある
+理由は次の3つで、いずれも動かすと壊れる：
+
+1. **`tako-custom/config/` には書けない** — ビルダー生成物であり手編集禁止
+   （`tako-custom` 運用ルール）。
+2. **モジュール Kconfig の `default` では勝てない** — `zmk/app/Kconfig` は
+   `rsource "src/split/Kconfig"`（248 行）と `rsource "Kconfig.defaults"`（715 行）を
+   `source "Kconfig.zephyr"`（717 行）**より先**に読む。Zephyr モジュールの Kconfig は
+   `Kconfig.zephyr` の内側（`modules/Kconfig`）から読まれるので必ず後着になり、
+   Kconfig は「パース順で最初に条件成立した `default`」を採るため、
+   `BT_L2CAP_TX_BUF_COUNT`（zmk 側 `default 5 if ZMK_SPLIT_ROLE_CENTRAL`）や
+   `SYSTEM_WORKQUEUE_STACK_SIZE`（zmk `Kconfig.defaults:4`）を**モジュール側から
+   上書きすることは原理的に不可能**。Zephyr 3.5 に `configdefault` は無い
+   （`zephyr/scripts/kconfig/kconfiglib.py` = kconfiglib 14.1.0、該当語ゼロ）。
+   `.conf` の代入だけが勝つ。
+3. **central に必ず入るスニペットが `torabo-caps` しかない** —
+   `firmware-builder/index.html:388` が無条件に `C.push(SNIP.caps)` する
+   （`C` は `split-central` を含む central 用リスト）。`build.yaml` の右列にも常にある。
+
+**`CONFIG_BT_CTLR_DATA_LENGTH_MAX` は 251 にしてはいけない（244 が上限）。**
+zmk の `app/src/studio/gatt_rpc_transport.c` の `get_notify_size_for_conn()` は
+`conn_info.le.data_len->tx_max_len`（＝ LL PDU ペイロード長）を、MTU で丸めずに
+そのまま `bt_gatt_indicate()` の **ATT バリュー長**として使う。LL PDU は L2CAP
+ヘッダ 4B と ATT ヘッダ 3B も運ぶので、`251 → ATT MTU 247 → indicate 244` の対応に
+なる。244 を超えると Zephyr の `bt_att_create_pdu()`
+（`subsys/bluetooth/host/att.c:3006-3016`、`len + sizeof(op) > bt_att_mtu(chan)` で
+チャネルを飛ばして NULL）が失敗し、`gatt_indicate()` が `-ENOMEM` を返す。zmk 側は
+`k_sleep(K_MSEC(200))` で 5 回リトライ（**system workqueue の中で**寝るので約1秒
+ワークキューごと止まる）した後、`ring_buf_get_finish()` で既に取り出し済みの
+チャンクを**捨てて**次へ進む。全チャンクで決定的に起きるので、症状は
+「RPC が壊れた上にワークキューが詰まる」。
+
+ここでの ATT MTU は `BT_LOCAL_ATT_MTU_UATT = MIN(BT_L2CAP_RX_MTU, BT_L2CAP_TX_MTU)
+= MIN(CONFIG_BT_BUF_ACL_RX_SIZE - 4, CONFIG_BT_L2CAP_TX_MTU) = MIN(247, 247) = 247`
+（`zephyr/subsys/bluetooth/host/att_internal.h:27`）。**Android は MTU 517 を要求するが
+FW 側が 247 なので ATT 規約の「両者 Rx MTU の小さい方」で 247 に落ち着く**（Windows も
+同様）。したがって 244 はこれらの相手に対して「安全側」ではなく**ぴったり**。
+ATT MTU 185 で確定する相手（一部の Apple ホスト）が居る場合だけは
+`ATT_MTU - 3 = 182` まで下げる必要がある（zmk は notify_size を MTU で
+クランプしないので FW 側では吸収できない）。
+
+なお upstream zmk は `BT_CTLR_DATA_LENGTH_MAX` の default を一切置かず、
+`bt_conn_le_data_len_update()` も呼ばない（`app/src/studio/Kconfig:70` の
+`select BT_USER_DATA_LEN_UPDATE` は自動 DLE 要求を**切る**方の選択肢）。素の zmk は
+常に 27 で走るため、この不一致は upstream では露見しない。DLE の起動は相手任せの
+ままで、この値は「こちらが応じる上限」を上げるだけ。
+
 ---
 
 ## 8. GATT 属性列の凍結

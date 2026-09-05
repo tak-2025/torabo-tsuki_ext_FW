@@ -90,6 +90,7 @@ BLE でライブ編集する機能は、それぞれ暗号化 GATT サービス�
   ```
   `conf` の `CONFIG_TORABO_RESERVED_LAYERS` は **枚数を作りません**（アプリへ枚数を申告する `torabo-caps` 用）。Zephyr は devicetree を Kconfig より先に処理し、DTS の前処理に `autoconf.h` を渡さないため、overlay の中では `CONFIG_*` が常に未定義になるからです。ビルダーは両方を揃えて出力します。
 - **`torabo-caps`** — 「このFWは何ができるか」（バージョン・搭載機能・各機能のワイヤ版・機能ビット）を read-only GATT で自己申告する裏方。アプリは接続時にこれを読み、存在するタブだけを表示する。書き込むものは無い。
+  - **相乗り（2026-09-05）**: BLE のバッファ/スタック 7 値（`CONFIG_BT_L2CAP_TX_BUF_COUNT=16` ほか）もこの `.conf` の末尾に入っています。「Studio を BLE で繋いだまま左右 split が張られていると右 central がフリーズする」件の対処で、central に必ず入るスニペットがこれしか無いためです。理由と各値の意味は conf 内のコメントと `docs/COMPATIBILITY.md` §7 に。RAM を約 11KB 使います。`CONFIG_BT_CTLR_DATA_LENGTH_MAX` は **244 が上限**（251 にすると Studio の RPC 応答が ATT MTU 超過で落ちます）。
 - **`torabo-live-feed`** — 押下キーとレイヤーを BLE NOTIFY で配信し、デスクトップオーバーレイ Torabo-Float がリアルタイム表示する。クライアントが購読中のみ発火するので未接続なら無コスト。central 専用（レイヤー状態と全体キー位置を知るのは central だけ）。
 - **`torabo-rpc-tunnel`** — 独自設定（トラックボール/トラックパッド/マクロ/コンボ/エンコーダ/LED/ライブフィード）を、BLE GATT サービスに加えて **Studio RPC の土管にも流す**。ワイヤは GATT と 1 バイトも変わらないので、アプリ側のコーデックはそのまま使い回せる。これが入っていると **USB 接続でも全タブが読み書きでき**、USB 接続の Torabo-Float にライブフィードが届く。
   - 入れるのは central だけ（RPC の実体は central にしかない）。GATT 側は無変更のまま残るので、既存の BLE クライアントには一切影響しない。
