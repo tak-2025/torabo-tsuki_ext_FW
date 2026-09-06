@@ -5,7 +5,9 @@
  * already sits on the half that talks to the host, so gpio-keys feeds a local
  * listener and the enc-button processor fires straight from the store.
  *
- * Pin: extender FFC button = P0.31 (use torabo-encoder-btn-local for P0.20).
+ * Pin: extender FFC button = P0.29 (the extender's MOTION line). NOT P0.31
+ * (its CS/RDY line). On the standard connector the same switch lands on P0.19
+ * (torabo-encoder-btn-local). Both measured on hardware 2026-09-06.
  * Pair with torabo-encoder-live, which brings the store, the GATT window and the
  * rotation router.
  */
@@ -18,7 +20,7 @@
 
         enc_btn: enc_btn {
             /* active low + pull-up: the switch shorts to GND when pressed */
-            gpios = <&gpio0 31 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            gpios = <&gpio0 29 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
             zephyr,code = <INPUT_BTN_0>;
         };
     };

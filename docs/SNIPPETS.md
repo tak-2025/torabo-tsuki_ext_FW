@@ -57,10 +57,10 @@ west が Malformed manifest で落ちます）。この fork の `app/west.yml` 
 | `input-encoder-ext` | 配線 | エンコーダ側 | 同上の拡張FFC版 | peripheral に載せたら central に `input-encoder-ext-recv` |
 | `input-encoder-recv` | 配線 | central | peripheral の標準FFCエンコーダを受ける（device は disabled、sensor index/LEN のみ確保） | 相手に `input-encoder` |
 | `input-encoder-ext-recv` | 配線 | central | 同上の拡張FFC版 | 相手に `input-encoder-ext` |
-| `torabo-encoder-btn-local` | 配線 | central | エンコーダ押しボタン（central・P0.20） | `torabo-encoder-live` |
-| `torabo-encoder-btn-local-ext` | 配線 | central | エンコーダ押しボタン（central・P0.31＝拡張） | `torabo-encoder-live` |
-| `torabo-encoder-btn-split` | 配線 | peripheral | エンコーダ押しボタン（peripheral・P0.20）を split 中継 | central に `-recv` |
-| `torabo-encoder-btn-split-ext` | 配線 | peripheral | 同上（P0.31＝拡張） | central に `-recv` |
+| `torabo-encoder-btn-local` | 配線 | central | エンコーダ押しボタン（central・P0.19） | `torabo-encoder-live` |
+| `torabo-encoder-btn-local-ext` | 配線 | central | エンコーダ押しボタン（central・P0.29＝拡張） | `torabo-encoder-live` |
+| `torabo-encoder-btn-split` | 配線 | peripheral | エンコーダ押しボタン（peripheral・P0.19）を split 中継 | central に `-recv` |
+| `torabo-encoder-btn-split-ext` | 配線 | peripheral | 同上（P0.29＝拡張） | central に `-recv` |
 | `torabo-encoder-btn-recv` | 配線 | central | split 中継されたボタンを central 側で受ける（input-split reg 2） | 相手に `-split*` |
 | `torabo-led-ext-periph` | 配線 | peripheral | peripheral 側の拡張LED。ルールは持たず central の描画を受ける | central に `torabo-led-live` |
 | `torabo-logdiag` | ユーティリティ | 任意 | 起動ログ取りこぼし対策（大バッファ＋ログ処理遅延）。zmk-usb-logging と併用 | — |
@@ -115,10 +115,10 @@ BLE でライブ編集する機能は、それぞれ暗号化 GATT サービス�
 
 | ボタンの位置 | ピン | 使うスニペット | central 側で必要 |
 |---|---|---|---|
-| central | P0.20 | `torabo-encoder-btn-local` | — |
-| central（拡張） | P0.31 | `torabo-encoder-btn-local-ext` | — |
-| peripheral | P0.20 | `torabo-encoder-btn-split` | `torabo-encoder-btn-recv` |
-| peripheral（拡張） | P0.31 | `torabo-encoder-btn-split-ext` | `torabo-encoder-btn-recv` |
+| central | P0.19 | `torabo-encoder-btn-local` | — |
+| central（拡張） | P0.29 | `torabo-encoder-btn-local-ext` | — |
+| peripheral | P0.19 | `torabo-encoder-btn-split` | `torabo-encoder-btn-recv` |
+| peripheral（拡張） | P0.29 | `torabo-encoder-btn-split-ext` | `torabo-encoder-btn-recv` |
 
 peripheral 側にボタンがある場合だけ、central に `torabo-encoder-btn-recv`（split 受信）を足します。
 

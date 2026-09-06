@@ -7,8 +7,9 @@
  * the same road the left trackpad's taps already travel. The central then decides
  * what the click does (torabo-encoder-btn-recv + the runtime store).
  *
- * Pins (see PLAN-encoder-extender.md): extender FFC button = P0.31.
- * For an encoder on the extender FFC use torabo-encoder-btn-split (P0.20).
+ * Pins (see PLAN-encoder-extender.md): extender FFC button = P0.29 (the
+ * extender's MOTION line; P0.31 is the wrong line for the switch).
+ * For an encoder on the standard FFC use torabo-encoder-btn-split (P0.19).
  *
  * Split slot: reg = <2>. Pointing devices take 0 (and 1 when a half carries two),
  * so 2 is always free for the button.
@@ -24,7 +25,7 @@
 
         enc_btn: enc_btn {
             /* active low + pull-up: the switch shorts to GND when pressed */
-            gpios = <&gpio0 31 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            gpios = <&gpio0 29 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
             zephyr,code = <INPUT_BTN_0>;
         };
     };

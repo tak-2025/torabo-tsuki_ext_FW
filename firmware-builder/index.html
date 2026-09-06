@@ -219,11 +219,11 @@ const SNIP = {
   // ボタンは gpio-keys → (peripheral なら split 中継) → 入力プロセッサ。
   // どちらもキー位置を消費しないので transform/keymap は無改造。
   encLive:'torabo-encoder-live',                     // central: ストア＋GATT＋回転ルーター
-  encBtnSplit:'torabo-encoder-btn-split',            // peripheral 標準FFC: ボタン P0.20 → split(reg2)
-  encBtnSplitExt:'torabo-encoder-btn-split-ext',     // peripheral 拡張FFC: ボタン P0.31 → split(reg2)
+  encBtnSplit:'torabo-encoder-btn-split',            // peripheral 標準FFC: ボタン P0.19 → split(reg2)
+  encBtnSplitExt:'torabo-encoder-btn-split-ext',     // peripheral 拡張FFC: ボタン P0.29 → split(reg2)
   encBtnRecv:'torabo-encoder-btn-recv',              // central: split(reg2) を受けて発火
-  encBtnLocal:'torabo-encoder-btn-local',            // central 標準FFC: ボタン P0.20（中継不要）
-  encBtnLocalExt:'torabo-encoder-btn-local-ext',     // central 拡張FFC: ボタン P0.31（中継不要）
+  encBtnLocal:'torabo-encoder-btn-local',            // central 標準FFC: ボタン P0.19（中継不要）
+  encBtnLocalExt:'torabo-encoder-btn-local-ext',     // central 拡張FFC: ボタン P0.29（中継不要）
   // 拡張LED（ライブ設定）。Studio のLEDタブで編集する唯一のLED方式。
   ledLive:'torabo-led-live',                        // central: ルール表＋GATT＋両側の判断
   ledPeriph:'torabo-led-ext-periph',                // peripheral: 言われた色を出すだけ＋切断時の自力表示
@@ -330,6 +330,15 @@ function buildModel(){
 
   // ---- peripheral ----
   const P = [SNIP.studio];
+  // エンコーダのボタン: peripheral 側は GPIO を split(reg=2) で central へ流すだけ。
+  // ピンは載っている FFC で決まる（標準=P0.19 / 拡張=P0.29。実測 2026-09-06）。
+  // ★ ポインティングの split(reg=0) より必ず先に置く。ZMK の central は input-split の
+  //   購読管理で reg=0 のスロットを永久に「未完了」扱いするため、reg=0 が先に見つかると
+  //   後から来た reg=2 が購読されずボタンが一切届かない（実機確認 2026-09-06: 順を
+  //   入れ替えただけで左のボタンが動いた）。snippet の順＝overlay の順＝DT ノード順＝
+  //   GATT の発見順なので、ここで先に出すのが対処。
+  if      (pd.std==='encoder') P.push(SNIP.encBtnSplit);
+  else if (pd.ext==='encoder') P.push(SNIP.encBtnSplitExt);
   if      (pd.std==='ball')    P.push(SNIP.tb, SNIP.spl0);
   else if (pd.std==='pad')     P.push(SNIP.tpS, SNIP.spl0);
   else if (pd.std==='encoder') P.push(SNIP.encS);            // 標準エンコーダ（回転）実装済み
@@ -338,10 +347,6 @@ function buildModel(){
     P.push(r===1 ? SNIP.tpXspl1 : SNIP.tpXspl);              // reg=0 / reg=1 とも実装済み
   }
   else if (pd.ext==='encoder') P.push(SNIP.encX);
-  // エンコーダのボタン: peripheral 側は GPIO を split(reg=2) で central へ流すだけ。
-  // ピンは載っている FFC で決まる（標準=P0.20 / 拡張=P0.31）。
-  if      (pd.std==='encoder') P.push(SNIP.encBtnSplit);
-  else if (pd.ext==='encoder') P.push(SNIP.encBtnSplitExt);
   // 拡張LED（peripheral 側）: 表示器として動く。パッドの有無に関わらず点灯する
   // （実機確認 2026-08-29。旧実装は「パッドがレールを上げないと光らない」前提だった）。
   if (state.sides[periph].ext==='led')
