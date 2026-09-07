@@ -300,10 +300,11 @@ NVS キー・compatible 文字列は §5, §6 で別掲。ここでは wire の�
 | 定数 | 値 | file:line |
 |---|---|---|
 | `ZTC_WIRE_MAGIC` | `0x7A74` | `features/trackball/src/config_state.c:30` |
-| `ZTC_WIRE_HDR` | 8B | `features/trackball/include/zmk_trackball_config/config.h:153` |
-| `ZTC_WIRE_LAYER` | 12B/layer | `config.h:154` |
-| `ZTC_WIRE_COAST` | 4B（v3トレーラ） | `config.h:155` |
-| `ZTC_WIRE_CAP` | `HDR + N*LAYER + COAST` | `config.h:158` |
+| `ZTC_WIRE_VERSION` | `3`（READ が出す版。caps もこの定数を読む） | `features/trackball/include/zmk_trackball_config/config.h:159` |
+| `ZTC_WIRE_HDR` | 8B | `config.h:161` |
+| `ZTC_WIRE_LAYER` | 12B/layer | `config.h:162` |
+| `ZTC_WIRE_COAST` | 4B（v3トレーラ） | `config.h:163` |
+| `ZTC_WIRE_CAP` | `HDR + N*LAYER + COAST` | `config.h:166` |
 | `ZTC_MAX_LAYERS` | `= ZMK_KEYMAP_LAYERS_LEN` | `config.h:33` |
 
 WRITE は v2（coast無し）・v3 の両方を受理、READ は常に v3 で返す（`config.h:128-137`）。
@@ -324,14 +325,15 @@ Write の上限 244B（ATT_MTU 247−3）を超える。GATT WRITE は `torabo_c
 | 定数 | 値 | file:line |
 |---|---|---|
 | `TP_WIRE_MAGIC` | `0x7470` | `features/trackpad/include/zmk_trackpad_config/config.h:305` |
-| `TP_WIRE_HDR` | 6B | `config.h:306` |
-| `TP_WIRE_DEV_HDR`（v1/v2） | 2B | `config.h:307` |
-| `TP_WIRE_DEV_HDR_V3` | 5B | `config.h:310` |
-| `TP_WIRE_BIND` / `TP_WIRE_AXIS` / `TP_WIRE_GEST` | 4B / 11B / 16B | `config.h:311-313` |
-| `TP_WIRE_LAYER_V2` | 38B (axis*2+gest) | `config.h:316` |
-| `TP_WIRE_AXIS_V1` / `TP_WIRE_LAYER_V1`（WRITE専用の旧形式） | 3B / 6B | `config.h:318-319` |
-| `TP_FLAG_GESTURES` / `TP_FLAG_COAST` | 0x01 / 0x02 | `config.h:322, 326` |
-| `TP_WIRE_CAP` | v3 device header基準の上限 | `config.h:330-332` |
+| `TP_WIRE_VERSION` | `3`（READ が出す版。caps もこの定数を読む） | `config.h:312` |
+| `TP_WIRE_HDR` | 6B | `config.h:314` |
+| `TP_WIRE_DEV_HDR`（v1/v2） | 2B | `config.h:315` |
+| `TP_WIRE_DEV_HDR_V3` | 5B | `config.h:318` |
+| `TP_WIRE_BIND` / `TP_WIRE_AXIS` / `TP_WIRE_GEST` | 4B / 11B / 16B | `config.h:319-321` |
+| `TP_WIRE_LAYER_V2` | 38B (axis*2+gest) | `config.h:324` |
+| `TP_WIRE_AXIS_V1` / `TP_WIRE_LAYER_V1`（WRITE専用の旧形式） | 3B / 6B | `config.h:326-327` |
+| `TP_FLAG_GESTURES` / `TP_FLAG_COAST` | 0x01 / 0x02 | `config.h:330, 334` |
+| `TP_WIRE_CAP` | v3 device header基準の上限 | `config.h:338-340` |
 | `TP_MAX_LAYERS` | `= ZMK_KEYMAP_LAYERS_LEN` | `config.h:47` |
 
 長さ計算の一本化（フェーズ2 A-4）: `tp_expected_len()`（宣言 `config.h:302`）が
@@ -845,10 +847,17 @@ CMake/ビルド時の自動整合チェックは追加していない（PLAN の
    `--docker` 無しでも可）を **LAYERS のデフォルト "10 4 20" のまま**流し、
    全 green を確認する。1つの層数だけ通しても §4 末尾の
    「ZMK_KEYMAP_LAYERS_LEN 依存の地雷」を再現できない。
-5. caps の `wire_ver`（`caps.c` の `build_features()` 内、該当機能の entry）を
-   実際に上げたか確認する。上げ忘れるとアプリが古い codec で新wireを書き込みに行き、
-   データ破損の恐れがある（`toraboCaps.ts` コメントが名指しする「wireがappのcodecを
-   追い越すケース」）。
+5. caps の `wire_ver` は**手で二重管理しない**。`caps.c` の `build_features()` は
+   各機能のヘッダの版定数（`ZTC_WIRE_VERSION` / `DM_VERSION` / `CB_VERSION` /
+   `TP_WIRE_VERSION` / `ENC_WIRE_VERSION` / `LED_WIRE_VERSION` /
+   `LIVE_FEED_PROTO_VER` / `TMG_WIRE_VERSION`）をそのまま読むので、READ ヘッダに
+   刻む版を1箇所で上げれば caps も一緒に上がる。逆に言えば、版を上げるときに直すのは
+   **その定数だけ**。上げ忘れるとアプリが古い codec で新wireを書き込みに行き、データ
+   破損の恐れがある（`toraboCaps.ts` コメントが名指しする「wireがappのcodecを
+   追い越すケース」）。自前の wire を持たない3行（RESERVED_LAYERS / RPC_TUNNEL /
+   MODULES）だけは指す先が無いので、`caps.h` の
+   `TORABO_CAPS_LAYERS_WIRE_VERSION` / `_TUNNEL_WIRE_VERSION` /
+   `_MODULES_WIRE_VERSION` がその1箇所になる。
 6. 実機で BLE と USB トンネルの両方の READ/WRITE を確認する（tunnel と GATT は同じ
    wire を共有するが実装は別、フェーズ5 でも「最も慎重に」と念押しされている箇所）。
 

@@ -303,6 +303,14 @@ uint16_t tp_expected_len(const uint8_t *hdr);
 
 /* ---- compile-time wire layout (DESIGN-trackpad-v2.md §3) ----------------- */
 #define TP_WIRE_MAGIC 0x7470u /* "tp" */
+
+/* The wire version this build SPEAKS: what tp_encode_read_wire() stamps into
+ * hdr[2], and what the caps descriptor reports for TORABO_FEAT_TRACKPAD. It
+ * lives in the public header so those two can never disagree — bumping the wire
+ * is a one-line change here. (WRITE additionally accepts the older v1/v2, which
+ * is a codec-private detail and stays in config_state.c.) */
+#define TP_WIRE_VERSION 3u
+
 #define TP_WIRE_HDR 6u     /* magic[2] version device_count layer_count flags */
 #define TP_WIRE_DEV_HDR 2u /* v1/v2: device_id meta */
 /* v3 device header: device_id meta + coast{enable friction threshold}. The coast

@@ -29,7 +29,8 @@ LOG_MODULE_REGISTER(ztc_config, CONFIG_ZMK_TRACKBALL_CONFIG_LOG_LEVEL);
  * WRITE accepts v2 (coast left disabled) and v3; READ always emits v3. */
 #define ZTC_WIRE_MAGIC 0x7A74u
 #define ZTC_WIRE_VERSION_V2 2u
-#define ZTC_WIRE_VERSION_V3 3u
+/* v3 == ZTC_WIRE_VERSION (zmk_trackball_config/config.h): the version this
+ * build emits, shared with the caps descriptor so the two cannot drift. */
 
 static inline uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 static inline void wr16(uint8_t *p, uint16_t v) {
@@ -64,7 +65,7 @@ uint16_t ztc_expected_len(const uint8_t *hdr) {
         return 0;
     }
     switch (hdr[2]) {
-    case ZTC_WIRE_VERSION_V3:
+    case ZTC_WIRE_VERSION:
         return ztc_wire_len();
     case ZTC_WIRE_VERSION_V2:
         return ztc_wire_len_v2();
@@ -186,7 +187,7 @@ int ztc_apply_wire(const uint8_t *buf, uint16_t len) {
         return -EINVAL;
     }
     const uint8_t version = buf[2];
-    const bool has_coast = (version == ZTC_WIRE_VERSION_V3);
+    const bool has_coast = (version == ZTC_WIRE_VERSION);
     if (version != ZTC_WIRE_VERSION_V2 && !has_coast) {
         LOG_WRN("ztc wire bad version %u", version);
         return -EINVAL;
@@ -239,7 +240,7 @@ int ztc_encode_wire(uint8_t *buf, uint16_t cap, uint16_t *out_len) {
     const struct ztc_snapshot *s = ztc_live();
     memset(buf, 0, need);
     wr16(&buf[0], ZTC_WIRE_MAGIC);
-    buf[2] = ZTC_WIRE_VERSION_V3;
+    buf[2] = ZTC_WIRE_VERSION;
     buf[3] = ZTC_MAX_LAYERS;
     buf[4] = s->temp_target;
     wr16(&buf[6], s->temp_timeout_ms);

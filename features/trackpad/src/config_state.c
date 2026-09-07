@@ -37,7 +37,8 @@ LOG_MODULE_REGISTER(tp_config, CONFIG_ZMK_TRACKPAD_CONFIG_LOG_LEVEL);
 
 #define TP_WIRE_VERSION_V1 1u
 #define TP_WIRE_VERSION_V2 2u
-#define TP_WIRE_VERSION_V3 3u
+/* v3 == TP_WIRE_VERSION (zmk_trackpad_config/config.h): the version this build
+ * emits, shared with the caps descriptor so the two cannot drift. */
 
 /* HID usage ids / mods for the v1->v2 preset upgrade (must match tpConfigV2.ts
  * presetForV1Role). Raw usage ids; the page is applied when the binding is
@@ -410,7 +411,7 @@ int tp_apply_wire(const uint8_t *buf, uint16_t len) {
     }
 #endif
 
-    if (version == TP_WIRE_VERSION_V3) {
+    if (version == TP_WIRE_VERSION) {
         return apply_v2_v3(buf, len, device_count, layer_count, flags, true);
     }
     if (version == TP_WIRE_VERSION_V2) {
@@ -446,7 +447,7 @@ int tp_encode_wire(uint8_t *buf, uint16_t cap, uint16_t *out_len) {
     }
     memset(buf, 0, need);
     wr16(&buf[0], TP_WIRE_MAGIC);
-    buf[2] = TP_WIRE_VERSION_V3;
+    buf[2] = TP_WIRE_VERSION;
     buf[3] = device_count;
     buf[4] = TP_MAX_LAYERS;
     buf[5] = TP_FLAG_GESTURES | TP_FLAG_COAST;

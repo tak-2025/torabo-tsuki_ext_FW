@@ -13,6 +13,38 @@
 
 #include <zmk_torabo_caps/caps.h>
 
+/* Each feature's public header, purely so its OWN wire-version constant can be
+ * reported below instead of a number typed a second time here. Guarded by the
+ * same CONFIG as the add_feat() call that uses it, so a build without a feature
+ * neither includes its header nor names its constant. (caps.h itself stays
+ * dependency-free — see the torabo_caps_side / torabo_caps_slot comments there;
+ * it is this .c, the thing that already knows about every feature, that takes
+ * the dependency.) */
+#if IS_ENABLED(CONFIG_ZMK_TRACKBALL_CONFIG)
+#include <zmk_trackball_config/config.h>
+#endif
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_KEYMAP)
+#include <zmk_dynamic_keymap/dmac.h>
+#endif
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBOS)
+#include <zmk_dynamic_keymap/dcombo.h>
+#endif
+#if IS_ENABLED(CONFIG_ZMK_TRACKPAD_CONFIG)
+#include <zmk_trackpad_config/config.h>
+#endif
+#if IS_ENABLED(CONFIG_ZMK_ENCODER_CONFIG)
+#include <zmk_encoder_config/config.h>
+#endif
+#if IS_ENABLED(CONFIG_ZMK_LED_CONFIG)
+#include <zmk_led_config/config.h>
+#endif
+#if IS_ENABLED(CONFIG_ZMK_LIVE_FEED)
+#include <zmk_live_feed/live_feed.h>
+#endif
+#if IS_ENABLED(CONFIG_ZMK_TIMING_CONFIG)
+#include <zmk_timing_config/config.h>
+#endif
+
 LOG_MODULE_REGISTER(torabo_caps, CONFIG_TORABO_CAPS_LOG_LEVEL);
 
 struct feat_entry {
@@ -87,7 +119,15 @@ static void add_feat(struct feat_entry *out, uint8_t *n, struct feat_entry entry
 
 /* One entry per feature that is actually compiled into THIS build. The wire
  * version is bumped by whoever changes that feature's wire — the app compares it
- * against what it knows how to speak. */
+ * against what it knows how to speak.
+ *
+ * Every wire_ver below is the feature's OWN constant, taken from the header the
+ * feature's codec already stamps its READ header from. That is the whole point:
+ * the version is ONE number in ONE place, so bumping a wire can no longer leave
+ * caps advertising the old one (which is exactly what happened to the trackball
+ * — it shipped saying 1 while its blob had carried 2 since the v2 rework). The
+ * three rows with no wire of their own use the constants caps.h declares for
+ * them. Nothing here is a literal. */
 static uint8_t build_features(struct feat_entry *out) {
     uint8_t n = 0;
 
@@ -95,32 +135,35 @@ static uint8_t build_features(struct feat_entry *out) {
     /* wire v3 = the v2 layer array plus the 4B inertial-scroll trailer. (The
      * blob has carried version byte 2 since the v2 rework; the 1 reported here
      * before was stale, and is corrected along with the bump.) */
-    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_TRACKBALL, 3, TORABO_CAPS_ZTC_COAST});
+    add_feat(out, &n,
+             (struct feat_entry){TORABO_FEAT_TRACKBALL, ZTC_WIRE_VERSION, TORABO_CAPS_ZTC_COAST});
 #endif
 #if IS_ENABLED(CONFIG_ZMK_DYNAMIC_KEYMAP)
     /* wire v2 (PLAN phase 8) = the v1 slot region with a per-slot NAME block
      * appended to the READ wire, plus a name-only WRITE op. Steps WRITE stays
      * v1 forever, so this bump only matters to a client deciding whether to
      * show/send names -- it does not change how steps are written. */
-    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_MACROS, 2, 0});
+    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_MACROS, DM_VERSION, 0});
 #endif
 #if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBOS)
-    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_COMBOS, 1, 0});
+    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_COMBOS, CB_VERSION, 0});
 #endif
 #if IS_ENABLED(CONFIG_ZMK_TRACKPAD_CONFIG)
     /* wire v3 = the v2 gesture/encoder-role wire with the per-device
      * inertial-scroll block added to each device header. */
-    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_TRACKPAD, 3, TORABO_CAPS_TP_COAST});
+    add_feat(out, &n,
+             (struct feat_entry){TORABO_FEAT_TRACKPAD, TP_WIRE_VERSION, TORABO_CAPS_TP_COAST});
 #endif
 #if IS_ENABLED(CONFIG_ZMK_ENCODER_CONFIG)
-    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_ENCODER, 1, 0});
+    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_ENCODER, ENC_WIRE_VERSION, 0});
 #endif
 #if IS_ENABLED(CONFIG_ZMK_LED_CONFIG)
-    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_LED, 1, led_caps_bits()});
+    add_feat(out, &n,
+             (struct feat_entry){TORABO_FEAT_LED, LED_WIRE_VERSION, led_caps_bits()});
 #endif
 #if defined(CONFIG_TORABO_RESERVED_LAYERS) && (CONFIG_TORABO_RESERVED_LAYERS > 0)
     add_feat(out, &n,
-             (struct feat_entry){TORABO_FEAT_RESERVED_LAYERS, 1,
+             (struct feat_entry){TORABO_FEAT_RESERVED_LAYERS, TORABO_CAPS_LAYERS_WIRE_VERSION,
                                  (uint16_t)(CONFIG_TORABO_RESERVED_LAYERS &
                                             TORABO_CAPS_LAYERS_MASK)});
 #endif
@@ -128,19 +171,22 @@ static uint8_t build_features(struct feat_entry *out) {
     /* wire v1 = the packed live_feed_evt the app parses today (unchanged). The diag
      * char (e1f4af02) ships with the live feed and is advertised by a caps bit, not
      * a wire bump. */
-    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_LIVE_FEED, 1, TORABO_CAPS_LIVE_FEED_DIAG});
+    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_LIVE_FEED, LIVE_FEED_PROTO_VER,
+                                          TORABO_CAPS_LIVE_FEED_DIAG});
 #endif
 #if IS_ENABLED(CONFIG_ZMK_STUDIO_TORABO_TUNNEL)
     /* wire v1 = the (feature_id, op, blob) tunnel request. The per-feature blobs
      * are unchanged, so their own wire_ver above still governs what the app sends;
      * this entry only says "the tunnel exists", i.e. USB can reach all of them. */
-    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_RPC_TUNNEL, 1, TORABO_CAPS_TUNNEL_NOTIFY});
+    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_RPC_TUNNEL, TORABO_CAPS_TUNNEL_WIRE_VERSION,
+                                          TORABO_CAPS_TUNNEL_NOTIFY});
 #endif
 #if IS_ENABLED(CONFIG_ZMK_TIMING_CONFIG)
     /* wire v1 = the fixed 96 B hold-tap + debounce blob (DESIGN-timing.md). The
      * split propagation of the debounce windows moves the same two bytes further,
      * so it is a caps bit rather than a wire bump. */
-    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_TIMING, 1, timing_caps_bits()});
+    add_feat(out, &n,
+             (struct feat_entry){TORABO_FEAT_TIMING, TMG_WIRE_VERSION, timing_caps_bits()});
 #endif
 #if IS_ENABLED(CONFIG_TORABO_CAPS)
     /* wire v1 = a single u16 of four 4-bit slot values (see caps.h). Always
@@ -148,7 +194,8 @@ static uint8_t build_features(struct feat_entry *out) {
      * which other features are compiled in — appended last (feature id 11)
      * so every byte of the 10 rows above is untouched by its addition (PLAN
      * phase 9, re-redesigned 2026-09-03). */
-    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_MODULES, 1, modules_caps_bits()});
+    add_feat(out, &n, (struct feat_entry){TORABO_FEAT_MODULES, TORABO_CAPS_MODULES_WIRE_VERSION,
+                                          modules_caps_bits()});
 #endif
 
     return n;

@@ -150,6 +150,14 @@ uint16_t ztc_wire_len(void);
 uint16_t ztc_expected_len(const uint8_t *hdr);
 
 /* ---- compile-time wire layout ------------------------------------------- */
+
+/* The wire version this build SPEAKS: what ztc_encode_read_wire() stamps into
+ * hdr[2], and what the caps descriptor reports for TORABO_FEAT_TRACKBALL. It
+ * lives in the public header so those two can never disagree — bumping the wire
+ * is a one-line change here. (WRITE additionally accepts the older v2, which is
+ * a codec-private detail and stays in config_state.c.) */
+#define ZTC_WIRE_VERSION 3u
+
 #define ZTC_WIRE_HDR 8u    /* magic[2] version layer_count temp_target _rsv timeout[2] */
 #define ZTC_WIRE_LAYER 12u /* x{role dir speed _rsv} y{...} temp_enable _rsv[3] */
 #define ZTC_WIRE_COAST 4u  /* v3 trailer: enable friction threshold _rsv */

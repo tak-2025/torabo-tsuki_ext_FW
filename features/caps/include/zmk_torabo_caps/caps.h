@@ -209,6 +209,30 @@ enum torabo_caps_slot {
  * past that and needs ATT Read Long (Blob Read), same as any other blob that
  * outgrows one MTU.
  */
+/*
+ * Wire versions for the three rows that have no wire of their own.
+ *
+ * Every other row reports the constant its own feature header already defines
+ * (ZTC_WIRE_VERSION, DM_VERSION, CB_VERSION, TP_WIRE_VERSION, ENC_WIRE_VERSION,
+ * LED_WIRE_VERSION, LIVE_FEED_PROTO_VER, TMG_WIRE_VERSION), so the byte the
+ * feature stamps into its own READ header and the byte caps reports are one
+ * number in one place. These three have nothing to point at:
+ *
+ *   RESERVED_LAYERS  is a pure Kconfig count (features/layers has no code and
+ *                    no header at all) — the caps row IS its whole wire.
+ *   RPC_TUNNEL       says only "the tunnel exists"; its transport lives in the
+ *                    zmk fork (<zmk/studio/torabo_tunnel.h>) and each tunnelled
+ *                    feature keeps reporting its own version above.
+ *   MODULES          is the u16 of four 4-bit slot values defined in this very
+ *                    header.
+ *
+ * So their one place is here. Bump one only when that row's own meaning
+ * changes.
+ */
+#define TORABO_CAPS_LAYERS_WIRE_VERSION 1
+#define TORABO_CAPS_TUNNEL_WIRE_VERSION 1
+#define TORABO_CAPS_MODULES_WIRE_VERSION 1
+
 #define TORABO_CAPS_HDR 8
 #define TORABO_CAPS_FEAT 4
 #define TORABO_CAPS_MAX_FEATURES 32
