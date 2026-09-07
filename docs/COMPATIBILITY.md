@@ -45,6 +45,45 @@ feature_id を採番すると購読が別の feature と衝突する）。同フ
 torabo_common/tunnel_wrap.h`）はその上に乗る WRITE ラッパ（apply→save 共通化、フェーズ2
 A-1）であり、feature_id/GATT/wire そのものには触れない。
 
+### blob 予算（`CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE`）と builder の自動出力
+
+トンネルは**前置きヘッダを付けず、切り詰めもしない**。zmk fork の
+`app/src/studio/torabo_subsystem.c` は静的バッファ
+`tunnel_blob[CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE]` を各機能の
+`read(buf, cap, out_len)` にそのまま渡し、返ってきた `out_len` バイトを protobuf の
+`bytes blob` としてそのまま載せる。したがって **blob 予算 ＝「有効な機能の READ 全長の最大値」**
+であり、超える機能は READ が `TUNNEL_STATUS(ERROR)` になるだけ（部分読取にはならない）。
+Kconfig の既定は 2048（トンネル有効時。`zmk/app/src/studio/Kconfig`。`range` は無い）。
+
+READ 全長は機能ごとに以下（`L` = `ZMK_KEYMAP_LAYERS_LEN`、`D` = トラックパッド台数）:
+
+| 機能 | READ 長 | 20 レイヤーでの値 |
+|---|---|---|
+| caps | `8 + 機能数*4` | 52（11 機能） |
+| trackball | `8 + 12*L + 4` | 252 |
+| macros | **1964 固定**（`DM_READ_WIRE_LEN`） | 1964 |
+| combos | 420 固定 | 420 |
+| trackpad | `6 + D*(5 + L*38)` | D=2: 1536 ／ D=3: 2301 ／ **D=4: 3066** |
+| encoder | `4 + 12*L` | 244 |
+| led | 72 固定 | 72 |
+| live_feed | `16 + 16*デバイス数`（最大8） | ≤144 |
+| timing | 96 固定 | 96 |
+
+既定 2048 を超えうるのは**トラックパッドだけ**（3 台以上）。macros の 1964 が次点で、
+これは既定に収まる（`tunnel_bridge.c` と zmk fork の Kconfig ヘルプはどちらも旧値
+「1624」のままなので注意。実体は `dmac.h` の `DM_READ_WIRE_LEN`）。
+
+**2026-09-07（B-1 ビルダー側）**: `firmware-builder/index.html` の `genConf()` が
+選んだ構成からこの表と同じ式で見積もり、2048 を超える構成でのみ 512 B 単位に切り上げた
+`CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE=<値>` を理由コメント付きで出力する
+（収まる構成では何も出さない）。台数は「実装したパッドの台数、ただし下限は FW 既定の
+`TP_DEFAULT_DEVICE_COUNT=2`・上限 `TP_MAX_DEVICES=4`」、レイヤー数は「keymap の基本
+レイヤー（builder からは見えないので 10 枚を前提に置く＝安全側）＋ `TORABO_RESERVED_LAYERS`」。
+`validate()` は見積りが 4096 B（RPC スレッドスタック 8192 B の半分。Kconfig に range が
+無いためビルダー側で置いた天井）を超える構成を err にする。**この式を変えるときは
+`tp_read_fits()` 側と必ず同時に変える** — ズレると FW が WRITE を拒否する。
+テスト: `test/builder/test-genconf.mjs`（式から期待値を計算する）。
+
 ---
 
 ## 2. caps 記述子の契約

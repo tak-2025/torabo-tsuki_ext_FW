@@ -470,6 +470,17 @@ function validate(model){
     }
   }
 
+  // USB トンネルの blob 上限（docs/BACKLOG.md B-1）。天井を超える構成は「上限を上げれば
+  // 通る」ではなく構成そのものが不可なので err。UI の選択肢の範囲（予約10枚・パッド4台＝
+  // 3066B）では到達しないが、将来レイヤー枚数の上限を緩めたときの保険として置く。
+  {
+    const est = tunnelBlobEstimate();
+    if (est.max > TUNNEL_BLOB_CEILING)
+      msgs.push({ k:'err', t:`USB トンネルの blob 見積りが ${est.max} B（${est.top.note}）で、ビルダーの上限 ${TUNNEL_BLOB_CEILING} B を超えています。予約レイヤー枚数かトラックパッドの台数を減らしてください。` });
+    else if (est.max > TUNNEL_BLOB_DEFAULT)
+      msgs.push({ k:'notice', t:`USB トンネル: ${est.top.note} の READ が約 ${est.max} B で既定 ${TUNNEL_BLOB_DEFAULT} B を超えるため、conf に CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE=${Math.ceil(est.max/TUNNEL_BLOB_STEP)*TUNNEL_BLOB_STEP} を出しました。` });
+  }
+
   if (!msgs.some(m=>m.k==='err')) msgs.unshift({ k:'ok', t:'設定OK。生成物を fork の各ファイルへ置き換えてビルドしてください。' });
   return msgs;
 }
@@ -519,6 +530,92 @@ function tpDeviceMeta(model){
   return { dev0, dev1 };
 }
 
+// ===================================================================
+// USB トンネルの blob 上限の見積り（docs/BACKLOG.md B-1）
+// ===================================================================
+// torabo-rpc-tunnel は buildModel() が常に載せる。トンネルは「機能ごとの READ 全長」を
+// 切り詰めずそのまま1個の blob に載せる（zmk fork の app/src/studio/torabo_subsystem.c が
+// feature->read() に sizeof(tunnel_blob) をそのまま渡し、前置きヘッダも付けない）。
+// 収まらない READ は切り詰められず TUNNEL_STATUS(ERROR) になるだけなので、
+// 必要な blob サイズ ＝「有効な機能の READ 長の最大値」。
+//
+// ★ここの式は FW 側の実体（features/*/ の定数）をそのまま写すこと。ズレると
+//   tp_read_fits()（features/trackpad/include/zmk_trackpad_config/config.h）が使う
+//   長さと食い違い、FW 側が WRITE を拒否する方向に壊れる。
+const TUNNEL_BLOB_DEFAULT = 2048; // zmk fork app/src/studio/Kconfig の default（トンネル有効時）
+const TUNNEL_BLOB_STEP    = 512;  // conf に出すときの丸め単位
+// Kconfig に range は無い。実際の天井は「blob が丸ごと乗る場所」＝ RPC スレッドスタック
+// 8192B（CONFIG_ZMK_STUDIO_RPC_THREAD_STACK_SIZE、トンネル有効時）に zmk_studio_Request が
+// blob をインラインで抱えて載ること（zmk-studio-messages の torabo.options.in が
+// TunnelRequest.blob の max_size をこの値にする）と、同サイズの静的バッファ。
+// その半分をビルダー側の上限とする。UI の選択肢だけでは到達しない保険。
+const TUNNEL_BLOB_CEILING = 4096;
+// keymap のレイヤー数は builder からは見えない（keymap は fork 側の資産）。
+// 総レイヤー数 ZMK_KEYMAP_LAYERS_LEN = keymap の基本レイヤー + CONFIG_TORABO_RESERVED_LAYERS。
+// 基本レイヤーは docs/COMPATIBILITY.md §4 が前提に置いている 10 枚を採る（fw-test /
+// tako-custom の実 keymap は 4 枚だが、過大評価は blob が少し大きくなるだけで安全側、
+// 過小評価は FW の WRITE 拒否＝実害になるので大きい方に寄せる）。
+const KEYMAP_BASE_LAYERS = 10;
+
+function tunnelLayerCount(){
+  const reserved = (state.features.layers && state.features.layersN>0) ? state.features.layersN : 0;
+  return KEYMAP_BASE_LAYERS + reserved;
+}
+// wire に載るトラックパッドの台数。FW の既定スナップショットは TP_DEFAULT_DEVICE_COUNT=2
+// （config.h）なので、パッドが1台でも wire は2台ぶん。実装台数がそれを超えるならその台数
+// （上限 TP_MAX_DEVICES=4）。
+function tunnelPadCount(){
+  let pads = 0;
+  for (const side of ['left','right']){
+    const d = sideDevices(side);
+    if (d.std === 'pad') pads++;
+    if (d.ext === 'pad') pads++;
+  }
+  return pads === 0 ? 0 : Math.min(4, Math.max(2, pads));
+}
+// 有効な機能ごとの READ 長。値の出どころは各機能のヘッダ（コメントの file を参照）。
+function tunnelReadLengths(){
+  const L = tunnelLayerCount();
+  const items = [];
+  const add = (label, len, note) => items.push({ label, len, note: note || label });
+  // caps は常に載る（buildModel が SNIP.caps を無条件で push）。8 + 機能数*4、
+  // 機能数の上限は TORABO_CAPS_MAX_FEATURES=32（caps.h）。上限で見積もる。
+  add('caps', 8 + 32 * 4);
+  // timing も常に載る。TMG_WIRE_LEN = 8 + 2*44（zmk_timing_config/config.h）
+  add('timing', 96);
+  if (state.features.trackball) add('トラックボール', 8 + 12 * L + 4); // ZTC_WIRE_HDR + LAYER*L + COAST
+  if (state.features.macros)    add('マクロ', 1964);                   // DM_READ_WIRE_LEN（dmac.h）
+  if (state.features.combos)    add('コンボ', 420);                    // CB_READ_WIRE_LEN（dcombo.h）
+  if (state.features.liveFeed)  add('ライブフィード', 16 + 8 * 16);    // 16 + デバイス最大8*16
+  const encPresent = ['left','right'].some(s => { const d = sideDevices(s); return d.std === 'encoder' || d.ext === 'encoder'; });
+  if (encPresent) add('エンコーダ', 4 + 12 * L);                        // ENC_WIRE_HDR + LAYER*L
+  const ledPresent = ['left','right'].some(s => state.sides[s].ext === 'led');
+  if (ledPresent) add('拡張LED', 72);                                   // LED_WIRE_CAP = 6 + 2*(1+8*4)
+  const pads = tunnelPadCount();
+  if (state.features.trackpadlive && pads > 0)
+    // tp_wire_len_for(): TP_WIRE_HDR + dev*(TP_WIRE_DEV_HDR_V3 + layer*TP_WIRE_LAYER_V2)
+    // READ は常に v3・TP_MAX_LAYERS で返る（config_state.c の tp_encode_wire）。
+    add('トラックパッド', 6 + pads * (5 + L * 38), `トラックパッド ${pads} 台 × 層 ${L}`);
+  return items;
+}
+// 見積りの最大値と、その理由（= 一番長い機能）。
+function tunnelBlobEstimate(){
+  const items = tunnelReadLengths();
+  let top = items[0];
+  for (const it of items) if (it.len > top.len) top = it;
+  return { max: top.len, top, layers: tunnelLayerCount(), pads: tunnelPadCount(), items };
+}
+// conf に出す値（既定で足りるなら null）。512B 単位で切り上げる。
+function tunnelBlobConf(){
+  const est = tunnelBlobEstimate();
+  if (est.max <= TUNNEL_BLOB_DEFAULT) return null;
+  return {
+    value: Math.ceil(est.max / TUNNEL_BLOB_STEP) * TUNNEL_BLOB_STEP,
+    reason: `USB トンネルの blob 上限（既定 ${TUNNEL_BLOB_DEFAULT} では足りない）: ${est.top.note} の READ が約 ${est.max} B のため`,
+    est,
+  };
+}
+
 function genConf(model){
   const lines=[]; const name=(state.keyboardName||'').trim();
   if (name && name!=='torabo-tsuki'){
@@ -565,6 +662,13 @@ function genConf(model){
     lines.push(`# Studio に見せるデバイス素性（0 = 不明 → Studio 側は「デバイス N」表示にフォールバック）`);
     lines.push(`CONFIG_ZMK_TRACKPAD_CONFIG_DEV0_META=${dev0}`);
     lines.push(`CONFIG_ZMK_TRACKPAD_CONFIG_DEV1_META=${dev1}`);
+  }
+  // USB トンネルの blob 上限（docs/BACKLOG.md B-1）。既定 2048 で足りる構成では
+  // 何も出さない（出しても意味がなく、RAM を無駄に固定するだけ）。
+  const blob = tunnelBlobConf();
+  if (blob){
+    lines.push(`# ${blob.reason}`);
+    lines.push(`CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE=${blob.value}`);
   }
   return lines.length ? lines.join('\n') : '# （この conf への追記は不要）';
 }

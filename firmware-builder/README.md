@@ -28,7 +28,8 @@
    **編集するのはこの3つだけです**（スニペットの実体は `torabo-tsuki_ext_FW` 側にあるので、fork にファイルを足す必要はありません）:
    - `build.yaml`（ルート）
    - `boards/shields/torabo_tsuki_lp/<central shield>.conf`
-     — 予約レイヤーの枚数申告・デバイス名・拡張LEDの実在フラグ・トラックパッドのデバイス素性メタ。
+     — 予約レイヤーの枚数申告・デバイス名・拡張LEDの実在フラグ・トラックパッドのデバイス素性メタ・
+     （必要な構成のみ）USB トンネルの blob 上限。
      いずれかが必要な構成のときだけ中身が出ます（不要なら「追記は不要」と表示されます）。
    - `config/west.yml`（初回のみ）。**追記だけでは足りません。**`remotes:` への `tak-2025` 追加と
      `torabo-tsuki_ext_FW` の追記に加えて、**既存エントリの置き換えが 1〜2 か所**あります:
@@ -101,6 +102,15 @@ v0 から拡張され、以下が実装済みです（いずれも `default n`�
 - **USB トンネル（`torabo-rpc-tunnel`）** — 独自設定を Studio RPC にも流す汎用トンネル。
   これがあると **USB 接続でも全タブが読み書きでき**、USB 接続の Torabo Float にライブフィードが届く。
   BLE GATT は無変更のまま並存。載っている機能のぶんだけ自動で口が開きます。central 専用。
+  トンネルは機能ごとの **READ 全長をそのまま1個の blob に載せる**（切り詰めない）ので、
+  blob バッファは「一番長い機能の READ 長」以上でなければ、その機能の READ だけが恒久エラーになります。
+  ビルダーは選んだ構成から各機能の READ 長を見積もり、`CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE`
+  の既定 2048 B を超える構成のときだけ、512 B 単位に切り上げた値を理由コメント付きで conf に出力します
+  （足りる構成では**何も出しません**）。見積り式は FW の実体と同じもので、効くのは実質トラックパッドだけです
+  — `6 + 台数 × (5 + 総レイヤー数 × 38)`（`tp_wire_len_for()`、READ は常に v3・最大レイヤー数で返る）。
+  総レイヤー数は keymap の基本レイヤー（ビルダーからは見えないので 10 枚を前提）＋予約レイヤー枚数。
+  パッド 3 台以上でこの既定を超えます（例: 4 台・20 レイヤーで 3066 B → `=3072` を出力）。
+  次に長いのはマクロの 1964 B 固定で、これは既定に収まります。
 - **タイミング／タップ反応（`torabo-timing` ＋ peripheral の `torabo-timing-split`）** —
   `&mt` / `&lt` の tapping-term・flavor・quick-tap・require-prior-idle と positional 系、
   および kscan のデバウンスを Studio からライブ調整。central に本体、peripheral に受け側を

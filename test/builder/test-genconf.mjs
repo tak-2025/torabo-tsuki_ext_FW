@@ -117,6 +117,103 @@ runCase('3) nothing populated', {
   expect: { central: 2, leftStd: 15, leftExt: 15, rightStd: 15, rightExt: 15 },
 });
 
+// ---------------------------------------------------------------------------
+// USB トンネル blob 上限（docs/BACKLOG.md B-1）
+//
+// genConf() が CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE を出すかどうかは
+// 「有効な機能の READ 長の最大値 > 2048」で決まる。期待値をベタ書きすると FW 側の
+// 定数を変えたときにテストだけ通ってしまうので、ここでも FW の式から計算する。
+//
+// 使うのは広いスライス（SHIELD..render）。validate() が buildModel() を呼び、
+// buildModel() が SNIP を要るため、上の state..genConf スライスでは足りない。
+// ---------------------------------------------------------------------------
+const wideStart = fullScript.indexOf('const SHIELD = side =>');
+const wideEnd = fullScript.indexOf('function render(){');
+if (wideStart < 0 || wideEnd < 0) { console.error('could not locate the SHIELD..render slice; index.html structure changed'); process.exit(1); }
+const wideSlice = fullScript.slice(wideStart, wideEnd);
+
+const wideHarness = new Function('CFG', `
+  ${wideSlice}
+  state.central = CFG.central;
+  Object.assign(state.features, CFG.features);
+  Object.assign(state.sides.left,  CFG.sides.left);
+  Object.assign(state.sides.right, CFG.sides.right);
+  const model = buildModel();
+  return { conf: genConf(model), msgs: validate(model), est: tunnelBlobEstimate() };
+`);
+
+// FW 側の式（テスト内で独立に持つ = index.html の写し間違いを検出するため）。
+//   features/trackpad/src/config_state.c  tp_wire_len_for()
+//   features/trackpad/include/.../config.h  HDR 6 / DEV_HDR_V3 5 / LAYER_V2 38
+const tpRead = (dev, layers) => 6 + dev * (5 + layers * 38);
+const DM_READ_WIRE_LEN = 1964;             // features/macros/include/.../dmac.h
+const BLOB_DEFAULT = 2048, BLOB_STEP = 512, BLOB_CEILING = 4096;
+const KEYMAP_BASE = 10;                    // index.html の KEYMAP_BASE_LAYERS と同じ前提
+const confLine = (conf) => conf.split('\n').find(l => l.startsWith('CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE='));
+
+function blobCase(name, { central, sides, features }) {
+  console.log(`\n== builder blob case: ${name} ==`);
+  const out = wideHarness({ central, sides, features });
+  const layers = KEYMAP_BASE + (features.layers && features.layersN > 0 ? features.layersN : 0);
+  const pads = ['left','right'].reduce((n,s)=>{
+    const sd = sides[s]; const ext = sd.ext === 'none' ? 'none' : sd.extDev;
+    return n + (sd.std === 'pad' ? 1 : 0) + (ext === 'pad' ? 1 : 0);
+  }, 0);
+  const dev = pads === 0 ? 0 : Math.min(4, Math.max(2, pads));
+  const tp = (features.trackpadlive && dev > 0) ? tpRead(dev, layers) : 0;
+  const want = Math.max(tp, features.macros ? DM_READ_WIRE_LEN : 0);
+  eq(out.est.max, want, `見積り最大 = max(tp ${tp}, macros ${features.macros ? DM_READ_WIRE_LEN : 0})`);
+  const line = confLine(out.conf);
+  if (want <= BLOB_DEFAULT) {
+    ok(line === undefined, `${want} B <= ${BLOB_DEFAULT} なので BLOB_MAX_SIZE は出ない`);
+  } else {
+    const rounded = Math.ceil(want / BLOB_STEP) * BLOB_STEP;
+    eq(line, `CONFIG_ZMK_STUDIO_TORABO_TUNNEL_BLOB_MAX_SIZE=${rounded}`, `${want} B > ${BLOB_DEFAULT} なので 512B 単位で切り上げて出る`);
+    ok(out.conf.includes('# USB トンネルの blob 上限'), '理由コメントが1行付く');
+  }
+  const err = out.msgs.find(m => m.k === 'err' && m.t.includes('blob 見積り'));
+  eq(err !== undefined, want > BLOB_CEILING, `validate の上限エラー（天井 ${BLOB_CEILING} B）`);
+  return out;
+}
+
+// (a) パッド1台（central 拡張のみ）・予約10 -> wire は既定の2台ぶんで 1536B、
+//     マクロ 1964B が最大 -> 2048 以内なので出ない。
+blobCase('a) パッド1台・予約10 -> 出ない', {
+  central: 'right',
+  sides: { left: { std:'none', ext:'none', extDev:'none' }, right: { std:'ball', ext:'led', extDev:'pad' } },
+  features: { trackball:true, macros:true, combos:true, layers:true, layersN:10, trackpadlive:true, liveFeed:true },
+});
+
+// (b) パッド2台（左右とも拡張パッド＝ユーザーの実機構成）・予約10。
+//     出る/出ないは上の式が決める（現状 tp=1536 < macros=1964 <= 2048 なので出ない）。
+blobCase('b) パッド2台（左右拡張）・予約10', {
+  central: 'right',
+  sides: { left: { std:'encoder', ext:'led', extDev:'pad' }, right: { std:'ball', ext:'led', extDev:'pad' } },
+  features: { trackball:true, macros:true, combos:true, layers:true, layersN:10, trackpadlive:true, liveFeed:true },
+});
+
+// (b') パッド4台（両サイドの標準＋拡張）・予約10 -> tp = 6+4*(5+20*38) = 3066 -> 3072 が出る。
+blobCase("b') パッド4台・予約10 -> 3072 が出る", {
+  central: 'right',
+  sides: { left: { std:'pad', ext:'led', extDev:'pad' }, right: { std:'pad', ext:'led', extDev:'pad' } },
+  features: { trackball:true, macros:true, combos:true, layers:true, layersN:10, trackpadlive:true, liveFeed:true },
+});
+
+// (c) 上限超え。UI の予約レイヤー上限は 10 枚なので、そこを踏み越えた state を直接渡して
+//     天井（4096B）のガードが効くことを見る。
+blobCase('c) パッド4台・予約100 -> validate error', {
+  central: 'right',
+  sides: { left: { std:'pad', ext:'led', extDev:'pad' }, right: { std:'pad', ext:'led', extDev:'pad' } },
+  features: { trackball:true, macros:true, combos:true, layers:true, layersN:100, trackpadlive:true, liveFeed:true },
+});
+
+// トラックパッド ライブ設定を切ったら、パッドが何台あっても tp は勘定に入らない。
+blobCase('d) パッド4台・トラックパッド ライブ設定OFF -> 出ない', {
+  central: 'right',
+  sides: { left: { std:'pad', ext:'led', extDev:'pad' }, right: { std:'pad', ext:'led', extDev:'pad' } },
+  features: { trackball:true, macros:true, combos:true, layers:true, layersN:10, trackpadlive:false, liveFeed:true },
+});
+
 console.log(`\n---------------------------------------------`);
 console.log(`passed: ${passed}   failed: ${failed}`);
 process.exit(failed ? 1 : 0);
