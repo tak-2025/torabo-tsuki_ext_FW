@@ -38,7 +38,7 @@ jobs:
     name: wire golden tests (host)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run the wire golden tests
         # Compiles each feature's config_state.c natively against the stubs in
@@ -93,18 +93,18 @@ jobs:
 
     steps:
       - name: Check out the module under test
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: module
 
       - name: Check out the config repo (shield + west manifest)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: tak-2025/fw-test
           path: hub
 
       - name: Cache the west workspace
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             workspace/zmk
@@ -162,7 +162,7 @@ jobs:
           ls -l build/zephyr/zmk.uf2
 
       - name: Upload the firmware
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
           path: workspace/build/zephyr/zmk.uf2
