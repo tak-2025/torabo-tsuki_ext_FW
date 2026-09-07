@@ -71,10 +71,11 @@ static uint16_t modules_caps_bits(void) {
 /* Append one entry, dropping it (and logging) instead of overrunning `out` once
  * the table is full. `out` is always sized TORABO_CAPS_MAX_FEATURES by the only
  * caller (torabo_caps_encode's stack array); every #if block below adds at most
- * one entry, and the table uses 10 of its 16 slots today (raised from 10/10
- * full in PLAN phase 6, B-4), so this guard is currently slack — it only
- * matters the day a 17th feature is added without also raising
- * TORABO_CAPS_MAX_FEATURES again (PLAN phase 2 A-5 added the guard itself). */
+ * one entry, and the table uses 11 of its 32 rows today (raised from 10/10 full
+ * to 16 in PLAN phase 6, B-4, then 16->32 in phase 9), so this guard is
+ * currently slack — it only matters the day a 33rd feature is added without
+ * also raising TORABO_CAPS_MAX_FEATURES again (PLAN phase 2 A-5 added the guard
+ * itself). */
 static void add_feat(struct feat_entry *out, uint8_t *n, struct feat_entry entry) {
     if (*n >= TORABO_CAPS_MAX_FEATURES) {
         LOG_ERR("caps table full (%u); dropping feature id %u", TORABO_CAPS_MAX_FEATURES,
